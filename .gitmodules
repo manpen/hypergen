@@ -1,0 +1,3 @@
+[submodule "libs/Vc"]
+	path = libs/Vc
+	url = https://github.com/VcDevel/Vc.git
