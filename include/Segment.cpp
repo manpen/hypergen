@@ -6,21 +6,25 @@
 Segment::Segment(Node firstNode, Count nodes, 
         CoordInter phiRange, const Geometry& geometry,
         const std::vector<Coord>& limits,
-        Seed seed
+        Seed seed,
+        bool endgame
 ) 
-    : _geometry(geometry)
+    : _endgame(endgame)
+    , _geometry(geometry)
     , _phiRange(phiRange)
 {
     assert(!limits.empty());
 
     DefaultPrng randgen(seed);
     
+    // distribute the requested number of points to bands
+    // according to the radial distribution function
     std::vector<Count> pointsInBand;
     {
         std::vector<Coord> probs;
         Coord last_cdf = 0.0;
         for(unsigned int i=1; i < limits.size(); ++i) {
-            assert(limits[i] < _geometry.R);
+            assert(limits[i] <= _geometry.R);
             const Coord cdf = _geometry.radCdf(limits[i]);
             probs.push_back(cdf - last_cdf);
             last_cdf = cdf;
@@ -29,13 +33,15 @@ Segment::Segment(Node firstNode, Count nodes,
         pointsInBand = RandomHelper::sampleMultinomial(nodes, probs, randgen);
     }
     
+    // instantiate an instance for each band
     Node n0 = firstNode;
     for(unsigned int i=0; i < pointsInBand.size(); ++i) {
         _bands.emplace_back( new BandSegment{
             n0, pointsInBand[i],
             phiRange, {limits[i], limits[i+1]},
             _geometry,
-            static_cast<uint32_t>(randgen())
+            static_cast<uint32_t>(randgen()),
+            _endgame
         });
         n0 += pointsInBand[i];
     }

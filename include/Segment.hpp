@@ -10,25 +10,100 @@
 #include "BandSegment.hpp"
 
 class Segment {
-public:    
-    Segment(Node firstNode, Count nodes, 
-            CoordInter phiRange, const Geometry& geometry,
-            const std::vector<Coord>& limits,
-            Seed seed
-    ); 
+public:
+    Segment(Node firstNode, Count nodes,
+        CoordInter phiRange, const Geometry& geometry,
+        const std::vector<Coord>& limits,
+        Seed seed,
+        bool endgame
+    );
 
     BandSegment& getBand(unsigned int i) {
         assert(i < _bands.size());
         return *_bands[i];
     }
-    
-    
+
+    const BandSegment& getBand(unsigned int i) const {
+        assert(i < _bands.size());
+        return *_bands[i];
+    }
+
+    BandSegment& getBandAbove(unsigned int i) {
+        assert(i < _bands.size());
+        if (++i == _bands.size())
+            i = _bands.size() - 1;
+        return *_bands[i];
+    }
+
+    const BandSegment& getBandAbove(unsigned int i) const {
+        assert(i < _bands.size());
+        if (++i == _bands.size())
+            i = _bands.size() - 1;
+        return *_bands[i];
+    }
+
+
+    template<typename EdgeCallback, typename PointCallback>
+    void advance(
+        const unsigned int bandIdx,
+        Coord threshold,
+        const bool finalize,
+        EdgeCallback edgeCB,
+        PointCallback pointCB
+    ) {
+        auto& band = *_bands.at(bandIdx);
+
+        // In the finalization step we need to recurse into all upper bands.
+        // So even if this band is done, we cannot stop just yet
+        if (band.done() && !finalize)
+            return;
+
+        unsigned int i=0;
+        do {
+            //std::cout << "Advance (" << i++ << ") band " << bandIdx << " to threshold " << threshold << " in with final=" << finalize << std::endl;
+
+            if (i == 10000) {
+                std::cerr << "Loop ?" << std::endl;
+                abort();
+            }
+
+
+            // Generate points. This is necessary, if the last time
+            // we went outside of our allowance
+            if (1) {
+                band.generatePoints(getBandAbove(bandIdx));
+
+                // invoke point callback
+                for(const auto& pt : band.getPoints())
+                    pointCB(pt);
+            }
+
+            if (band.getPoints().empty() || band.getPoints().front().phi > threshold) {
+                if (!finalize)
+                    break;
+            }
+
+            if (!band.getPoints().empty()) {
+                band.generateEdges(edgeCB, getBandAbove(bandIdx), threshold);
+            }
+
+
+            if (bandIdx+1 < _bands.size()) {
+                advance(bandIdx+1, std::min(band.nextRequestLB(), threshold), finalize, edgeCB, pointCB);
+            }
+            
+        } while(finalize ? !band.done(threshold) : !band.done());
+    }
+
+    const CoordInter& getPhiRange() const {return _phiRange;}
+
 private:
+    const bool _endgame;
     const Geometry _geometry;
     const CoordInter _phiRange;
-    
+
     std::vector<std::unique_ptr<BandSegment>> _bands;
-    
+
 };
 
 #endif

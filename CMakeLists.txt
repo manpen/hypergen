@@ -7,8 +7,10 @@ link_directories(libs/NetworKit)
 include_directories(libs/Vc/include/)
 link_directories(libs/Vc/build/)
 
-set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++14 -fopenmp -g -march=native")
- 
+set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++14 -fopenmp -g -march=native -ffast-math")
+#set(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS} -fsanitize=address")
+
+
 add_executable(mhyperbolic main.cpp)
 
 add_executable(benchmark_networkit benchmark_networkit.cpp)
@@ -23,6 +25,8 @@ add_executable(main_hyper
     include/Segment.cpp
     include/Generator.cpp
 )
+
+target_link_libraries(main_hyper NetworKit)
 
 
 #target_link_libraries(main_hyper NetworKit)

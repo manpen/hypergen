@@ -1,5 +1,8 @@
 #pragma once
+#ifndef SCOPED_TIMER_HPP
+#define SCOPED_TIMER_HPP
 
+#include <iostream>
 #include <string>
 #include <sstream>
 #include <chrono>
@@ -19,7 +22,7 @@ public:
           : _begin(Clock::now()), _scale(1), _offset(0)
     {}
 
-    ScopedTimer(const std::string& prefix, uint64_t scale=1, double offset=0.0)
+    ScopedTimer(const std::string& prefix, uint64_t scale=0, double offset=0.0)
           : _prefix(prefix), _begin(Clock::now()), _scale(scale), _offset(offset)
     {}
 
@@ -41,11 +44,17 @@ public:
         const auto t2 = Clock::now();
         std::chrono::duration<double> time_span =
                 std::chrono::duration_cast<std::chrono::duration<double>>(t2 - _begin);
+                
+        const double timeUs = (time_span.count()*1e3) - _offset;
+        
+        if (!_scale) {
+            std::cout << prefix << " Time elapsed: " << timeUs << "ms" << std::endl;
+        } else {
+            std::cout << prefix << " Time elapsed: " << timeUs << "ms / " << _scale << " = " <<  (1e3*timeUs / _scale) << "us" << std::endl;
+        }
 
-        double res = (time_span.count()*1e9/_scale - _offset);
-
-        std::cout << prefix << " " << res << "ns" << std::endl;
-
-        return res;
+        return timeUs;
     }
 };
+
+#endif

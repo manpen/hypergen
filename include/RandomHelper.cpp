@@ -6,22 +6,18 @@
 #include "Summation.hpp"
 
 std::vector<uint64_t> RandomHelper::sampleMultinomial(const uint64_t n, const std::vector<double>& probs, DefaultPrng& rg) {
-    assert(probs.size() > 1);
-    std::vector<uint64_t> result(probs.size());
+    assert(!probs.empty());
+    if (probs.size() == 1) return {n};
+    std::vector<uint64_t> result;
     
-    double normalization;
-    {
-        KahnSummation<double> sum; 
-        for(const auto p : probs) {
-            assert(p >= 0.0);
-            sum.push(p);
-        }
-        normalization = 1.0 / sum.sum();
-    }
+    assert(std::abs( std::accumulate(probs.cbegin(), probs.cend(), 0.0) - 1.0 ) < std::numeric_limits<double>::epsilon());
     
     auto elems_left = n;
-    for(auto it = probs.cbegin(); std::distance(probs.cend(), it) > 1; ++it) {
-        std::binomial_distribution<uint64_t> distr(elems_left, (*it * normalization));
+    double prob_mass = 1.0;
+    for(size_t i=0; i < probs.size()-1; i++) {
+        std::binomial_distribution<uint64_t> distr(elems_left, probs[i] / prob_mass);
+        prob_mass -= probs[i];
+        
         const auto num = distr(rg);
         elems_left -= num;
         result.push_back(num);
