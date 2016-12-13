@@ -9,7 +9,11 @@
 #include "Geometry.hpp"
 #include "PointGenerator.hpp"
 #include "Assert.hpp"
+#include "Histogram.hpp"
 
+#include <Vc/Allocator>
+
+#define SKIP_DIST_COMP
 
 class BandSegment {
 public:
@@ -21,10 +25,9 @@ public:
     void generateGlobalPoints();
     
     template <typename EdgeCallback>
-    void generateEdges(EdgeCallback edgeCallback, BandSegment& bandAbove, double threshold = 2*M_PI) {
+    void generateEdges(EdgeCallback edgeCallback, BandSegment& bandAbove, Coord threshold = 2*M_PI) {
         if (_stats) {
-            _stats_data.batches++;
-            _stats_data.activeSize += _active.size();
+            _stats_data.activeSizes.addPoint( _active.size() );
         }
 
         if (_points.empty() || _points.front().phi > threshold) { //} _phiRange.second) {
@@ -63,7 +66,7 @@ public:
         const Coord bandLowerCosh = std::cosh(_radRange.first);
         
         const auto startEnd = std::upper_bound(_req_phi_start.cbegin(), _req_phi_start.cbegin() + upper, _points.back().phi,
-            [] (const Coord thresh, const Coord& start) {return thresh < start;}
+            [] (const Coord thresh, const Coord_v& start) {return thresh < start[0];}
         );
         
         if (_verbose) {
@@ -75,68 +78,101 @@ public:
         }
 
         auto p = _points.cbegin();
+
+        if (_stats) {
+            _stats_data.pointSizes.addPoint( std::distance(p, _points.cend() ) );
+        }
+
         for(; p != _points.cend(); ++p) {
             const Point& pt = *p;
             if (pt.phi > threshold)
                 break;
-
-            const uint32_t this_upper = static_cast<uint32_t>(std::distance(_req_phi_start.cbegin(), 
-                                       std::lower_bound(_req_phi_start.cbegin(), startEnd, pt.phi)));
+#ifndef SKIP_DIST_COMP
+            const auto this_upper = static_cast<uint32_t>(
+                    std::distance(_req_phi_start.cbegin(),
+                        std::lower_bound(_req_phi_start.cbegin(), startEnd, pt.phi,
+                                         [] (const Coord_v& pt, const Coord thresh) {return pt[0] < thresh;}
+                                       )));
             if (_verbose) {
                 std::cout << "  compare point ("
                     "id: " << pt.id << ", "
                     "phi: " << pt.phi << ", "
                     "r: " << std::acosh(pt.r.cosh) << ") "
-                    "with " << (this_upper) << " requests" 
+                    "with " << (this_upper) << " requests"
                 << std::endl;
             }
 
             const bool pointFromLastSegment = !_endgame || pt.old();
 
-            for(uint32_t i = 0; i < this_upper; ++i) {
-                const bool reqFromLastSegment = !_endgame || _req_old[i];
-                //const bool ptIsSmaller = (_req_phi_start[i] <= pt.phi) && (_req_phi_stop[i] > pt.phi) && ( (_req_cosh[i] < bandLowerCosh) || (_req_ids[i] < pt.id) || pointFromLastSegment != reqFromLastSegment);
-                const bool ptIsSmaller = (std::tie(_req_cosh[i], _req_phi_start[i]) < std::tie(pt.r.cosh, pt.phi)) && pt.id != _req_ids[i] && _req_phi_stop[i] > pt.phi;
 
-                if (_stats) {
-                    _stats_data.compares++;
-                }
-
-                if (_verbose) {
-                    const Coord cosDist = (pt.r.cosh * _req_cosh[i] - _geometry.coshR) / (pt.r.sinh * _req_sinh[i]);
-                    std::cout << "   request ("
-                        "id: " << _req_ids[i] << ", "
-                        "phi: " <<_req_phi[i] << ", "
-                        "range: [" << _req_phi_start[i] << ", " << _req_phi_stop[i] << "], "
-                        "r: " << std::acosh(_req_cosh[i]) << ") "
-                        << " ptIsSmaller: " << ptIsSmaller
-                        << " deltaPhi: " << _req_phi[i] - pt.phi
-                        << " cosDist: " << cosDist
-                        << " cos(deltaPhi): " << cos(_req_phi[i] - pt.phi)
-                        << " oldPt: " << pointFromLastSegment
-                        << " oldReq: " << reqFromLastSegment
-                        << (ptIsSmaller && (cosDist < cos(_req_phi[i] - pt.phi)) ? " <------------" : "")
-                        << (i == this_upper ? " !!!!!!!!" :"")
-                        << "  ." << pt.id << "-" << _req_ids[i] << "." << _req_ids[i] << "-" << pt.id << "."
-
-                    << std::endl;
-                }
-
-                //if (unlikely(deltaPhi > 2*M_PI)) deltaPhi -= 2*M_PI;
-                //deltaPhi -= (deltaPhi > 2*M_PI) * 2.0 * M_PI;
-
-                Coord deltaPhi = fabs(_req_phi[i] - pt.phi);
-                const Coord dist = (pt.r.cosh * _req_cosh[i] - _geometry.coshR) / (pt.r.sinh * _req_sinh[i]);
+            for(unsigned int i = 0; i < this_upper; ++i) {
+                Vc::Mask<Coord> optScal;
+                for(unsigned int j=0; j<optScal.size(); ++j)
+                    optScal[j] = (_req_ids[i][j] != pt.id) && (!_endgame || pt.old() || _req_old[i*CoordPacking+j]);
 
 
-                if (ptIsSmaller && (reqFromLastSegment || pointFromLastSegment)) {
-                    if (dist < cos(deltaPhi)) {
-                        edgeCallback({pt.id, _req_ids[i]});
-                        if (_stats)
-                            _stats_data.edges++;
+
+                const auto ptIsSmaller =
+                        ((_req_cosh[i] < pt.r.cosh) || (_req_cosh[i] == pt.r.cosh && _req_phi_start[i] < pt.phi))
+                        && optScal
+                        && _req_phi_stop[i] > pt.phi;
+
+                if (ptIsSmaller.isEmpty())
+                    continue;
+
+
+                // computations
+                const auto dist = (_req_cosh[i] * pt.r.cosh - _geometry.coshR) * (_req_invsinh[i] * pt.r.invsinh);
+                const auto cosDist = Vc::cos(_req_phi[i] - pt.phi);
+
+                const auto isEdge = ptIsSmaller && (dist < cosDist);
+
+                _stats_data.compares += CoordPacking;
+                _stats_data.edges += isEdge.count();
+
+/*
+
+                for(unsigned int j=0; j<CoordPacking; ++j) {
+                    const bool reqFromLastSegment = !_endgame || _req_old[i*CoordPacking+j];
+
+                    const bool ptIsSmaller =
+                            ((_req_cosh[i][j] < pt.r.cosh) || (_req_cosh[i][j] == pt.r.cosh && _req_phi_start[i][j] < pt.phi))
+                             && pt.id != _req_ids[i][j] && _req_phi_stop[i][j] > pt.phi;
+
+                    _stats_data.compares += _stats;
+
+                    Coord deltaPhi = (_req_phi[i][j] - pt.phi);
+
+                    if (_verbose) {
+                        std::cout << "   request ("
+                            "id: " << _req_ids[i][j] << ", "
+                            "phi: " <<_req_phi[i][j] << ", "
+                            "range: [" << _req_phi_start[i][j] << ", " << _req_phi_stop[i][j] << "], "
+                            "r: " << std::acosh(_req_cosh[i][j]) << ") "
+                            << " ptIsSmaller: " << ptIsSmaller
+                            << " deltaPhi: " << _req_phi[i][j] - pt.phi
+                            << " cosDist: " << dist
+                            << " cos(deltaPhi): " << cos(_req_phi[i][j] - pt.phi)
+                            << " oldPt: " << pointFromLastSegment
+                            << " oldReq: " << reqFromLastSegment
+                            << (ptIsSmaller && (dist < cos(_req_phi[i][j] - pt.phi)) ? " <------------" : "")
+                            << (i == this_upper ? " !!!!!!!!" :"")
+                            << "  ." << pt.id << "-" << _req_ids[i][j] << "." << _req_ids[i][j] << "-" << pt.id << "."
+
+                        << std::endl;
                     }
-                }
+
+                    const bool inRange = dist < cos(deltaPhi);
+                    const bool isEdge = ptIsSmaller && (reqFromLastSegment || pointFromLastSegment) && inRange;
+
+                    _stats_data.edges += _stats && isEdge;
+
+                    if (isEdge) {
+                        edgeCallback({pt.id, _req_ids[i][j]});
+                    }
+                } */
             }
+#endif
         }
 
         // remove completed requests
@@ -167,52 +203,52 @@ public:
         ASSERT(!_active.empty());
 
         _checkInvariants();
-        
+
         // compute the active request range, i.e. the request whos range ends the latest
         const Coord maxRange = std::max_element(_active.cbegin(), _active.cend(), [](const Request& a, const Request b) {return a.range.second < b.range.second;})->range.second;
         ASSERT_GT(maxRange, _phiRange.first);
         ASSERT_LE(maxRange, _phiRange.second);
-        
+
         // estimate the current progress (lastPhi) and the number of points we still need to generate
         Coord lastPhi = _phiRange.first;
         while(!_active.empty()) {
             const Coord expDistance =  (_phiRange.second - _phiRange.first) / _numberOfNodes;
             ASSERT_LE(lastPhi, maxRange);
-            
-            const auto batchSize = std::max(100u, std::min<unsigned int>(10 * _batchSize, 
+
+            const auto batchSize = std::max(100u, std::min<unsigned int>(10 * _batchSize,
                 1.1 * (maxRange - lastPhi) / expDistance
             ));
-            
+
             // generate points and discard requests
             {
                 std::vector<Request> newRequests;
                 std::tie(_points, newRequests) = _generator.generate(batchSize);
             }
-            
+
             if (_points.empty())
                 return;
-            
+
             lastPhi = _points.back().phi;
 
             // do the job ;)
             generateEdges(edgeCallback, *this);
         }
     }
-    
-    
+
+
     Node getFirstNode() const {return _firstNode;}
     Node getNumberOfNodes() const {return _numberOfNodes;}
-    
+
     const CoordInter& getPhiRange() const {return _phiRange;}
     const CoordInter& getRadRange() const {return _radRange;}
-    
+
     std::vector<Point>& getPoints() {return _points;}
     const std::vector<Point>& getPoints() const {return _points;}
     std::vector<Request>& getRequests() {return _active;}
     const std::vector<Request>& getRequests() const {return _active;}
     std::vector<Request>& getInsertionBuffer() {return _insertion_buffer;}
     const std::vector<Request>& getInsertionBuffer() const {return _insertion_buffer;}
-    
+
     bool done() const {
         return _no_valid_requests && !_generator.nodesLeft();
     }
@@ -223,22 +259,25 @@ public:
 
     struct Statistics {
         Count batches{0};
-        EdgeId activeSize{0};
         EdgeId edges{0};
         EdgeId compares{0};
-        
+
+        Histogram activeSizes;
+        Histogram pointSizes;
+
         Statistics operator+(const Statistics& o) const {
             Statistics s;
-            
+
             s.batches    = batches    + o.batches;
-            s.activeSize = activeSize + o.activeSize;
+            s.activeSizes= activeSizes+ o.activeSizes;
+            s.pointSizes = pointSizes + o.pointSizes;
             s.edges      = edges      + o.edges;
             s.compares   = compares   + o.compares;
-            
+
             return s;
         }
     };
-    
+
     const Statistics& getStatistics() const {
         return _stats_data;
     }
@@ -256,9 +295,9 @@ private:
     const CoordInter _phiRange;
     const CoordInter _radRange;
     const SinhCosh   _upperLimit;
-    
+
     const Count _batchSize;
-    
+
     // Statistics
     static constexpr bool _verbose{false};
     static constexpr bool _stats{true};
@@ -270,15 +309,16 @@ private:
     std::vector<Request> _insertion_buffer;
     std::vector<Request> _active;
     bool _no_valid_requests{false};
-    
+
     // Internal data structures (SoA)
     std::vector<Point> _points;
-    std::vector<Node > _req_ids;
-    std::vector<Coord> _req_phi;     
-    std::vector<Coord> _req_phi_start;
-    std::vector<Coord> _req_phi_stop; 
-    std::vector<Coord> _req_sinh;     
-    std::vector<Coord> _req_cosh;
+
+    std::vector<Node_v,  Vc::Allocator<Node_v> > _req_ids;
+    std::vector<Coord_v, Vc::Allocator<Coord_v> > _req_phi;
+    std::vector<Coord_v, Vc::Allocator<Coord_v> > _req_phi_start;
+    std::vector<Coord_v, Vc::Allocator<Coord_v> > _req_phi_stop;
+    std::vector<Coord_v, Vc::Allocator<Coord_v> > _req_invsinh;
+    std::vector<Coord_v, Vc::Allocator<Coord_v> > _req_cosh;
     std::vector<bool>  _req_old;
 
 
@@ -286,9 +326,13 @@ private:
     void _mergeInsertionBuffer(BandSegment& bandAbove);
     void _propagateRequests(const std::vector<Request>& reqs, BandSegment& bandAbove);
 
+
+    std::vector<Request> _merge_helper;
+
+
 #ifdef NDEBUG
     void _checkInvariants() const {}
-#else    
+#else
     void _checkInvariants() const;
 #endif
 };

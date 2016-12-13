@@ -3,21 +3,21 @@
 #include <cassert>
 
 // borrowed from NetworKit
-double Geometry::_computeTargetRadius(const Count n, const double avgDeg, const double alpha) const {
-    const double gamma = 2*alpha+1;
-    const double xi = (gamma-1)/(gamma-2);
-    const double xiInv = ((gamma-2)/(gamma-1));
-    const double v = avgDeg * (M_PI/2)*xiInv*xiInv;
+Coord Geometry::_computeTargetRadius(const Count n, const Coord avgDeg, const Coord alpha) const {
+    const Coord gamma = 2*alpha+1;
+    const Coord xi = (gamma-1)/(gamma-2);
+    const Coord xiInv = ((gamma-2)/(gamma-1));
+    const Coord v = avgDeg * (M_PI/2)*xiInv*xiInv;
     
-    constexpr double epsilon = 1e-10;
+    constexpr Coord epsilon = 1e-10;
     
-    double currentR = 2*log(n / v);
-    double lowerBound = currentR/2;
-    double upperBound = currentR*2;
+    Coord currentR = 2*log(n / v);
+    Coord lowerBound = currentR/2;
+    Coord upperBound = currentR*2;
     
-    auto getExpectedDegree = [&] (double R) {
-        double firstSumTerm = exp(-R/2);
-        double secondSumTerm = exp(-alpha*R)*(alpha*(R/2)*((M_PI/4)*pow((1/alpha),2)-(M_PI-1)*(1/alpha)+(M_PI-2))-1);
+    auto getExpectedDegree = [&] (Coord R) {
+        Coord firstSumTerm = exp(-R/2);
+        Coord secondSumTerm = exp(-alpha*R)*(alpha*(R/2)*((M_PI/4)*pow((1/alpha),2)-(M_PI-1)*(1/alpha)+(M_PI-2))-1);
         return (2.0 / M_PI) * xi * xi * n *(firstSumTerm + secondSumTerm);
     };
         
@@ -27,7 +27,7 @@ double Geometry::_computeTargetRadius(const Count n, const double avgDeg, const 
     
     do {
         currentR = (lowerBound + upperBound)/2;
-        const double currentK = getExpectedDegree(currentR);
+        const Coord currentK = getExpectedDegree(currentR);
         if (currentK < avgDeg) {
             upperBound = currentR;
         } else {

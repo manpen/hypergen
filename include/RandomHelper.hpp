@@ -6,12 +6,14 @@
 #include <cstdint>
 #include <random>
 
+#include "Geometry.hpp"
+
 using DefaultPrng = std::mt19937_64;
 
 class RandomHelper {
 public:    
-    static std::vector<uint64_t> sampleMultinomial(const uint64_t n, const std::vector<double>& probs, DefaultPrng& rg);
-    static std::vector<uint64_t> sampleMultinomial(const uint64_t n, const uint64_t groups, DefaultPrng& rg);
+    static std::vector<Node> sampleMultinomial(const Node n, const std::vector<Coord>& probs, DefaultPrng& rg);
+    static std::vector<Node> sampleMultinomial(const Node n, const Node groups, DefaultPrng& rg);
 };
 
 

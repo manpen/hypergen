@@ -2,6 +2,12 @@
 #ifndef GEOMETRY_HPP
 #define GEOMETRY_HPP
 
+#define SIMD
+
+#ifdef SIMD
+#include <Vc/Vc>
+#endif
+
 #include <cmath>
 #include <cstdint>
 #include <utility>
@@ -12,9 +18,23 @@
 #define likely(x)       __builtin_expect((x),1)
 #define unlikely(x)       __builtin_expect((x),0)
 
-
 using Coord = double;
-using Node = uint64_t;
+using Node = unsigned long int;
+#ifdef SIMD
+//using Vc::double_v;
+//using Vc::ullong_v;
+    using Coord_v = Vc::Vector<Coord>;
+    using Node_v = Vc::Vector<Node>;
+    constexpr unsigned int CoordPacking = sizeof(Coord_v) / sizeof(Coord);
+    constexpr unsigned int NodePacking = sizeof(Node_v) / sizeof(Node);
+#else
+    constexpr unsigned int CoordPacking = 1;
+    constexpr unsigned int NodePacking = 1;
+#endif
+
+constexpr unsigned int MinPacking = CoordPacking > NodePacking ? NodePacking : CoordPacking;
+constexpr unsigned int MaxPacking = CoordPacking < NodePacking ? NodePacking : CoordPacking;
+
 using Count = Node;
 using Seed = uint32_t;
 
@@ -27,7 +47,7 @@ using Interval = std::pair<T, T>;
 using CoordInter = Interval<Coord>;
 
 struct SinhCosh {
-    Coord sinh;
+    Coord invsinh;
     Coord cosh;
     
     SinhCosh() {}
@@ -37,12 +57,12 @@ struct SinhCosh {
         const Coord e  = std::exp(r);
         const Coord ie = 1.0 / e;
 
-        sinh = 0.5 * (e - ie);
+        invsinh = 2.0 / (e - ie);
         cosh = 0.5 * (e + ie);     
     }
     
-    SinhCosh(const Coord sinh, const Coord cosh)
-        : sinh(sinh), cosh(cosh)
+    SinhCosh(const Coord invsinh, const Coord cosh)
+        : invsinh(invsinh), cosh(cosh)
     {}
         
 };
@@ -78,7 +98,7 @@ struct Point {
     }
 
     Coord distanceTo(const Point& o) const {
-        return std::acosh(r.cosh*o.r.cosh - r.sinh*o.r.sinh*cos(o.phi - phi));
+        return std::acosh(r.cosh*o.r.cosh - cos(o.phi - phi)/r.invsinh/o.r.invsinh);
     }
 };
 
@@ -116,7 +136,7 @@ struct Geometry {
     }
 
     Coord deltaPhi(const SinhCosh pt, const SinhCosh band) const {
-        Coord deltaPhiCos = (pt.cosh * band.cosh - coshR) / (pt.sinh * band.sinh);
+        Coord deltaPhiCos = (pt.cosh * band.cosh - coshR) * pt.invsinh * band.invsinh;
         if (deltaPhiCos >  1.0) deltaPhiCos =  1.0;
         if (deltaPhiCos < -1.0) deltaPhiCos = -1.0;
     
@@ -155,6 +175,10 @@ struct Request : public Point {
 
     friend std::ostream& operator <<(std::ostream& stream, const Request& o) {
         return stream << "Request(id:" << o.id << ", phi: " << o.phi << ", range: [" << o.range.first << ", " << o.range.second << "], r: " << std::acosh(o.r.cosh) << ", old:" << o.old() << ")";
+    }
+
+    static Request faraway() {
+        return {0, 0.0, {0.0, 0.0}, 1e10};
     }
 };
 

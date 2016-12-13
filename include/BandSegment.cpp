@@ -6,10 +6,10 @@
 #include <cassert>
 
 template <typename T>
-static void merge_vectors(const std::vector<T>& v1, const std::vector<T>& v2, std::vector<T>& output) {
-    std::vector<T> res(v1.size() + v2.size());
-    std::merge(v1.cbegin(), v1.cend(), v2.cbegin(), v2.cend(), res.begin());
-    res.swap(output);
+static void merge_vectors(std::vector<T>& srcdest, const std::vector<T>& add, std::vector<T>& helper) {
+    helper.resize(srcdest.size() + add.size());
+    std::merge(srcdest.cbegin(), srcdest.cend(), add.cbegin(), add.cend(), helper.begin());
+    srcdest.swap(helper);
 }
 
 
@@ -21,7 +21,7 @@ BandSegment::BandSegment(Node firstNode, Count nodes, CoordInter phiRange, Coord
     , _phiRange(phiRange)
     , _radRange(radRange)
     , _upperLimit(radRange.second)
-    , _batchSize(geometry.avgDeg * 2)
+    , _batchSize(4*geometry.avgDeg)
     , _generator(_firstNode, _numberOfNodes, _phiRange, _radRange, _geometry, seed)
 {}
 
@@ -43,7 +43,7 @@ void BandSegment::generatePoints(BandSegment& bandAbove) {
     _propagateRequests(newRequests, bandAbove);
     
     // merge all new requests into active
-    merge_vectors(_active, newRequests, _active);
+    merge_vectors(_active, newRequests, _merge_helper);
 }
 
 void BandSegment::generateGlobalPoints() {
@@ -71,46 +71,81 @@ void BandSegment::_propagateRequests(const std::vector<Request>& reqs, BandSegme
     if (bandAbove._insertion_buffer.empty()) {
         bandAbove._insertion_buffer.swap(mapped);
     } else {
-        merge_vectors(bandAbove.getInsertionBuffer(), mapped, bandAbove.getInsertionBuffer());
+        merge_vectors(bandAbove.getInsertionBuffer(), mapped, _merge_helper);
     }
 }
 
 unsigned int BandSegment::_AosToSoa(const Coord thresh) {
+    const size_t vectorSize = (_active.size() + MinPacking - 1) / MinPacking;
+
     // transform AoS to SoA
-    _req_ids      .resize(_active.size());
-    _req_phi      .resize(_active.size());
-    _req_phi_start.resize(_active.size());
-    _req_phi_stop .resize(_active.size());
-    _req_sinh     .resize(_active.size());
-    _req_cosh     .resize(_active.size());
-    if (_endgame)
-        _req_old  .resize(_active.size());
+    _req_ids      .resize(vectorSize);
+    _req_phi      .resize(vectorSize);
+    _req_phi_start.resize(vectorSize);
+    _req_phi_stop .resize(vectorSize);
+    _req_invsinh  .resize(vectorSize);
+    _req_cosh     .resize(vectorSize);
 
-
-        for(unsigned int i=0; i < _active.size(); ++i) {
-        const Request& req = _active[i];
-
-        _req_ids      [i] = req.id;
-        _req_phi      [i] = req.phi;
-        _req_phi_start[i] = req.range.first;
-        _req_phi_stop [i] = req.range.second;
-        _req_sinh     [i] = req.r.sinh;
-        _req_cosh     [i] = req.r.cosh;
-
-        if (_endgame)
-            _req_old  [i] = req.old();
+    if (_endgame) {
+        _req_old.resize(_active.size());
     }
 
-    const unsigned int j = _active.size();
+    if (!vectorSize)
+        return 0;
 
-    if (_verbose) {
-        std::cout << 
-                " AosToSoa removed " << (_active.size() - j) << 
-                " out of " << _active.size() << " requests" 
-        << std::endl;
+    static_assert(CoordPacking == NodePacking, "Currently Node_v and Coord_v should be equal");
+
+    for(unsigned int i=0; i < vectorSize-1; ++i) {
+        for(unsigned int j=0; j<CoordPacking; ++j) {
+            const Request& req = _active[CoordPacking*i+j];
+
+            _req_ids[i][j] = req.id;
+            _req_phi[i][j] = req.phi;
+            _req_phi_start[i][j] = req.range.first;
+            _req_phi_stop[i][j] = req.range.second;
+            _req_invsinh[i][j] = req.r.invsinh;
+            _req_cosh[i][j] = req.r.cosh;
+        }
+
+        if (_endgame) {
+            for (unsigned int j = 0; j < CoordPacking; ++j) {
+                const Request &req = _active[CoordPacking * i + j];
+                _req_old[CoordPacking*i + j] = req.old();
+            }
+        }
     }
-    
-    return j;
+
+    {
+        const unsigned int i = vectorSize-1;
+
+        _req_ids.back().setZero();
+        _req_phi.back().setZero();
+        _req_phi_start.back().setZero();
+        _req_phi_stop.back().setZero();
+        _req_cosh.back() = 1e10;
+
+        for(unsigned int j=0; j<CoordPacking; ++j) {
+            const auto idx = CoordPacking*i+j;
+            if (idx < _active.size()) {
+                const Request &req = _active[idx];
+                _req_ids.back()[j] = req.id;
+                _req_phi.back()[j] = req.phi;
+                _req_phi_start.back()[j] = req.range.first;
+                _req_phi_stop.back()[j] = req.range.second;
+                _req_invsinh.back()[j] = req.r.invsinh;
+                _req_cosh.back()[j] = req.r.cosh;
+            }
+        }
+
+        if (_endgame) {
+            for (unsigned int j = CoordPacking * i; j < _active.size(); ++j) {
+                const Request &req = _active[j];
+                _req_old[j] = req.old();
+            }
+        }
+    }
+
+    return vectorSize;
 }
 
 
@@ -121,7 +156,7 @@ void BandSegment::_mergeInsertionBuffer(BandSegment& bandAbove) {
     if (&bandAbove != this)
         _propagateRequests(_insertion_buffer, bandAbove);
     
-    merge_vectors(_active, _insertion_buffer, _active);
+    merge_vectors(_active, _insertion_buffer, _merge_helper);
 
     // save to _active and free _insertion_buffer
     _insertion_buffer.clear();
@@ -195,9 +230,9 @@ Coord BandSegment::prepareEndgame(const BandSegment& band) {
         return newReqs;
     };
 
-    merge_vectors(_active, extractRequests(band.getRequests()), _active);
+    merge_vectors(_active, extractRequests(band.getRequests()), _merge_helper);
     if (!band.getInsertionBuffer().empty())
-        merge_vectors(_insertion_buffer, extractRequests(band.getInsertionBuffer()), _insertion_buffer);
+        merge_vectors(_insertion_buffer, extractRequests(band.getInsertionBuffer()), _merge_helper);
 
     return maxPhi;
 }

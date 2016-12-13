@@ -22,7 +22,8 @@ Generator::Generator(Count n, Coord avgDeg, Coord alpha, Seed seed, uint32_t wor
         std::cout << "Number of nodes requested: " << n << "\n"
                      "Average Degree: " << avgDeg << "\n"
                      "Number of Worker/Segments: " << worker << "\n"
-                     "Number of bands: " << (_bandLimits.size()-1)
+                     "Number of bands: " << (_bandLimits.size()-1) << "\n"
+                     "TargetRadius: " << _geometry.R
         << std::endl;
         
         std::cout << "Nodes per segment:";
@@ -272,6 +273,8 @@ void Generator::_reportEndStats() const {
     << std::endl;
 
     BandSegment::Statistics tot_stats;
+    std::vector<Histogram> activeSizes;
+    std::vector<Histogram> pointSizes;
 
     for(unsigned int b=0; b < _bandLimits.size() - 1; ++b) {
         const BandSegment::Statistics stats =
@@ -292,6 +295,9 @@ void Generator::_reportEndStats() const {
                 << " " << std::setw(12) << std::right << eg_stats.edges
                 << " " << std::setw(12) << std::right << (static_cast<double>(eg_stats.compares) / eg_stats.edges)
         << std::endl;
+
+        activeSizes.push_back(stats.activeSizes + eg_stats.activeSizes);
+        pointSizes.push_back(stats.pointSizes + eg_stats.pointSizes);
     }
 
     std::cout <<
@@ -300,6 +306,21 @@ void Generator::_reportEndStats() const {
         "Compares per edge:  " << std::setw(12) << std::right << (static_cast<double>(tot_stats.compares) / tot_stats.edges) << "\n"
         "Average Degree:     " << std::setw(12) << std::right << (2.0 * tot_stats.edges / _noNodes)
     << std::endl;
+
+    for(unsigned int b=0; b < activeSizes.size(); ++b) {
+        std::cout << "Active size in band " << b << "\n";
+        activeSizes[b].toStream(std::cout, "ACT-SZE-" + std::to_string(b));
+        std::cout << std::endl;
+    }
+
+    std::cout << "Total points size:\n";
+    tot_stats.pointSizes.toStream(std::cout, "TOT-PTS-SZE");
+    std::cout << std::endl;
+
+    std::cout << "Total active size:\n";
+    tot_stats.activeSizes.toStream(std::cout, "TOT-ACT-SZE");
+    std::cout << std::endl;
+
 }
 
 void Generator::_dumpAllPointsAndRequests(const std::vector<std::unique_ptr<Segment>>& segments, const std::string key) const {

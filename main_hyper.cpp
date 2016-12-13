@@ -12,29 +12,59 @@
 #include <cmath>
 
 #include <parallel/algorithm>
+#include <string>
 
 //#define CROSS_REFERENCE
+
+
 
 int main(int argc, char* argv[]) {
     unsigned int noWorker = 8;
     
-    constexpr unsigned int confNoPoints = 10000000;
-    constexpr double confAvgDeg = 50;
-    constexpr double confAlpha = 2.1;
-    constexpr Seed confSeed = 1234;
+    unsigned int confNoPoints = 1000000;
+    double confAvgDeg = 50;
+    double confAlpha = 2.1;
+    Seed confSeed = 1234;
+
+    for(unsigned int i=1; i+1 < argc; i+=2) {
+        std::string key = argv[i];
+        std::string value = argv[i+1];
+
+        if (key == "-n") {confNoPoints = stoll(value);}
+        else if (key == "-d") {confAvgDeg = stod(value);}
+        else if (key == "-a") {confAlpha = stod(value);}
+        else if (key == "-s") {confSeed = stoi(value);}
+        else {
+            std::cerr << "Unknown argument: " << key << std::endl;
+            abort();
+        }
+    }
+
+    std::cout << "Parameters:\n"
+              "-n " << confNoPoints << "\n"
+              "-d " << confAvgDeg << "\n"
+              "-a " << confAlpha << "\n"
+              "-s " << confSeed
+    << std::endl;
 
     const auto threadsBefore = omp_get_max_threads();
-    
+
+    std::cout << "SIMD: NodePacking=" << NodePacking << " CoordPacking=" << CoordPacking << std::endl;
+
 
 // run new generator
-    std::vector<Point> points(confNoPoints, Point(0, -100, 1));
+    std::vector<Point> points;
+#ifdef CROSS_REFERENCE
+    points.resize(confNoPoints, Point(0, -100, 1));
+#endif
+
     std::vector<EdgeId> nodeCounters(noWorker);
     std::vector<EdgeId> edgeCounters(noWorker);
     std::vector<std::vector<Edge>> edges(noWorker);
 
+    Generator gen(confNoPoints, confAvgDeg, confAlpha, confSeed, noWorker);
     {
         ScopedTimer timer("Generator time");
-        Generator gen(points.size(), confAvgDeg, confAlpha, confSeed, noWorker);
 
         auto addPoint = [&](const Point &pt, unsigned int s) {
 #ifdef CROSS_REFERENCE

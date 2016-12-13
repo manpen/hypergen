@@ -4,8 +4,11 @@ project(mhyperbolic)
 include_directories(libs/NetworKit/include/)
 link_directories(libs/NetworKit)
 
-include_directories(libs/Vc/include/)
-link_directories(libs/Vc/build/)
+#set(Vc_DIR "libs/Vc/")
+find_package(Vc)
+add_compile_options(${Vc_ALL_FLAGS})
+#include_directories(libs/Vc/include/)
+#link_directories(libs/Vc/build/)
 
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++14 -fopenmp -g -march=native -ffast-math")
 #set(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS} -fsanitize=address")
@@ -24,9 +27,10 @@ add_executable(main_hyper
     include/BandSegment.cpp
     include/Segment.cpp
     include/Generator.cpp
+    include/Histogram.cpp
 )
 
-target_link_libraries(main_hyper NetworKit)
+target_link_libraries(main_hyper NetworKit Vc)
 
 
 #target_link_libraries(main_hyper NetworKit)
