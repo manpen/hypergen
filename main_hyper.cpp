@@ -187,6 +187,8 @@ int main(int argc, char* argv[]) {
                               << points[e.first] << "\n "
                               << points[e.second] << ", "
                               << "distance: " << std::setw(20) << points[e.first].distanceTo(points[e.second]) << ", "
+                              << "distance(H): " << std::setw(20) << points[e.first].distanceToHyper(points[e.second]) << ", "
+
                               << "R: " << std::setw(20) <<  gen.getGeometry().R
                               << std::endl;
 

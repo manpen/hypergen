@@ -66,8 +66,6 @@ public:
         }
         
         _no_valid_requests = false;
-        const Coord bandLowerCosh = std::cosh(_radRange.first);
-        
         const auto startEnd = std::upper_bound(_req_phi_start.cbegin(), _req_phi_start.cbegin() + upper, _points.back().phi,
             [] (const Coord thresh, const Coord_v& start) {return thresh < start[0];}
         );
@@ -76,7 +74,7 @@ public:
             std::cout << " generate edges with " 
                         << _points.size() << " points and " 
                         << _req_ids.size() << " requests of which " 
-                        << std::distance(_req_phi_start.cbegin(), startEnd) << " will be considered" 
+                        << std::distance(_req_phi_start.cbegin(), startEnd) << " will be considered"
             << std::endl;
         }
 
@@ -92,27 +90,30 @@ public:
         const Coord_v threshR = static_cast<Coord_b>(_geometry.coshR);
 #endif
 
+        auto binsearch_begin = _req_phi_start.cbegin();
+
         for(; p != _points.cend(); ++p) {
             const Point& pt = *p;
             if (pt.phi > threshold)
                 break;
 
-            const Coord_b ptrcosh = pt.r.cosh;
-            const Coord_b ptphi   = pt.phi;
+            const Coord_v ptrcosh(static_cast<Coord_b>(pt.r.cosh));
+            const Coord_v ptphi(static_cast<Coord_b>(pt.phi));
 #ifdef POINCARE
-            const Coord_b poinX = pt.poinX;
-            const Coord_b poinY = pt.poinY;
-            const Coord_b poinInvR = pt.poinInvLen;
+            const Coord_v poinX(static_cast<Coord_b>(pt.poinX));
+            const Coord_v poinY(static_cast<Coord_b>(pt.poinY));
+            const Coord_v poinInvR(static_cast<Coord_b>(pt.poinInvLen));
 #else
             const Coord_b ptrsinh = pt.r.invsinh;
 #endif
 
 #ifndef SKIP_DIST_COMP
+            while(binsearch_begin != startEnd && (*binsearch_begin)[0] < pt.phi)
+                ++binsearch_begin;
+
             const auto this_upper = static_cast<uint32_t>(
-                    std::distance(_req_phi_start.cbegin(),
-                        std::lower_bound(_req_phi_start.cbegin(), startEnd, pt.phi,
-                                         [] (const Coord_v& pt, const Coord thresh) {return pt[0] < thresh;}
-                                       )));
+                    std::distance(_req_phi_start.cbegin(), binsearch_begin));
+
             if (_verbose) {
                 std::cout << "  compare point ("
                     "id: " << pt.id << ", "
@@ -130,7 +131,7 @@ public:
                         && (pointFromLastSegment || _req_old[i])
                         && _req_phi_stop[i] > ptphi;
 
-                if (ptIsSmaller.isEmpty())
+                if (unlikely(ptIsSmaller.isEmpty()))
                     continue;
 
 
@@ -139,7 +140,8 @@ public:
                 const auto deltaX = _req_poin_x[i] - poinX;
                 const auto deltaY = _req_poin_y[i] - poinY;
 
-                const auto dist = (deltaX*deltaX + deltaY*deltaY) * poinInvR * _req_poin_invr[i];
+                const auto dist = ((deltaX*deltaX + deltaY*deltaY) * poinInvR * _req_poin_invr[i]);
+
                 const auto isEdge = ptIsSmaller && (dist < threshR);
 #else
                 const auto dist = (_req_cosh[i] * ptrcosh - threshR) * (_req_invsinh[i] * ptrsinh);
@@ -147,53 +149,14 @@ public:
                 const auto isEdge = ptIsSmaller && (dist < cosDist);
 #endif
 
-
                 _stats_data.compares += CoordPacking;
                 _stats_data.edges += isEdge.count();
 
-/*
-
-                for(unsigned int j=0; j<CoordPacking; ++j) {
-                    const bool reqFromLastSegment = !_endgame || _req_old[i*CoordPacking+j];
-
-                    const bool ptIsSmaller =
-                            ((_req_cosh[i][j] < pt.r.cosh) || (_req_cosh[i][j] == pt.r.cosh && _req_phi_start[i][j] < pt.phi))
-                             && pt.id != _req_ids[i][j] && _req_phi_stop[i][j] > pt.phi;
-
-                    _stats_data.compares += _stats;
-
-                    Coord deltaPhi = (_req_phi[i][j] - pt.phi);
-
-                    if (_verbose) {
-                        std::cout << "   request ("
-                            "id: " << _req_ids[i][j] << ", "
-                            "phi: " <<_req_phi[i][j] << ", "
-                            "range: [" << _req_phi_start[i][j] << ", " << _req_phi_stop[i][j] << "], "
-                            "r: " << std::acosh(_req_cosh[i][j]) << ") "
-                            << " ptIsSmaller: " << ptIsSmaller
-                            << " deltaPhi: " << _req_phi[i][j] - pt.phi
-                            << " cosDist: " << dist
-                            << " cos(deltaPhi): " << cos(_req_phi[i][j] - pt.phi)
-                            << " oldPt: " << pointFromLastSegment
-                            << " oldReq: " << reqFromLastSegment
-                            << (ptIsSmaller && (dist < cos(_req_phi[i][j] - pt.phi)) ? " <------------" : "")
-                            << (i == this_upper ? " !!!!!!!!" :"")
-                            << "  ." << pt.id << "-" << _req_ids[i][j] << "." << _req_ids[i][j] << "-" << pt.id << "."
-
-                        << std::endl;
-                    }
-
-                    const bool inRange = dist < cos(deltaPhi);
-                    const bool isEdge = ptIsSmaller && (reqFromLastSegment || pointFromLastSegment) && inRange;
-
-                    _stats_data.edges += _stats && isEdge;
-*/
-
                 for(unsigned int j=0; j < isEdge.size(); ++j) {
                     const auto & neighbor = _req_ids[i*CoordPacking + j];
-                    if (isEdge[j] && pt.id != neighbor) {
+
+                    if (unlikely(isEdge[j] && pt.id != neighbor))
                         edgeCallback({pt.id, neighbor});
-                    }
                 }
             }
 #endif

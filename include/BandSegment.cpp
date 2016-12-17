@@ -76,7 +76,7 @@ void BandSegment::_propagateRequests(const std::vector<Request>& reqs, BandSegme
 }
 
 unsigned int BandSegment::_AosToSoa(const Coord thresh) {
-    const size_t vectorSize = (_active.size() + MinPacking - 1) / MinPacking;
+    const size_t vectorSize = (_active.size() + CoordPacking - 1) / CoordPacking;
 
     // transform AoS to SoA
     _req_ids      .resize(_active.size());
@@ -97,8 +97,6 @@ unsigned int BandSegment::_AosToSoa(const Coord thresh) {
 
     if (!vectorSize)
         return 0;
-
-    static_assert(CoordPacking == NodePacking, "Currently Node_v and Coord_v should be equal");
 
     auto id_it = _req_ids.begin();
 
@@ -123,7 +121,6 @@ unsigned int BandSegment::_AosToSoa(const Coord thresh) {
                 _req_old[i][j] = req.old();
             }
         }
-
     }
 
     {

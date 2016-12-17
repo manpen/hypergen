@@ -7,8 +7,8 @@
 
 #include <cstdint>
 
-#define likely(x)       __builtin_expect((x),1)
-#define unlikely(x)       __builtin_expect((x),0)
+#define likely(x)   __builtin_expect((x),1)
+#define unlikely(x) __builtin_expect((x),0)
 
 #define POINCARE
 
@@ -24,9 +24,6 @@ using Node_v = Vc::Vector<Node_b>;
 
 constexpr unsigned int CoordPacking = sizeof(Coord_v) / sizeof(Coord_b);
 constexpr unsigned int NodePacking = sizeof(Node_v) / sizeof(Node_b);
-
-constexpr unsigned int MinPacking = CoordPacking > NodePacking ? NodePacking : CoordPacking;
-constexpr unsigned int MaxPacking = CoordPacking < NodePacking ? NodePacking : CoordPacking;
 
 using Count = Node;
 using Seed = uint32_t;
