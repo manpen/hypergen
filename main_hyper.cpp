@@ -14,15 +14,15 @@
 #include <parallel/algorithm>
 #include <string>
 
-//#define CROSS_REFERENCE
-
-
+#ifndef NDEBUG
+#define CROSS_REFERENCE
+#endif
 
 int main(int argc, char* argv[]) {
-    unsigned int noWorker = 8;
+    unsigned int noWorker = omp_get_max_threads();
     
-    unsigned int confNoPoints = 1000000;
-    double confAvgDeg = 50;
+    unsigned int confNoPoints = 1000;
+    double confAvgDeg = 5;
     double confAlpha = 2.1;
     Seed confSeed = 1234;
 
@@ -30,10 +30,11 @@ int main(int argc, char* argv[]) {
         std::string key = argv[i];
         std::string value = argv[i+1];
 
-        if (key == "-n") {confNoPoints = stoll(value);}
+        if      (key == "-n") {confNoPoints = stoll(value);}
         else if (key == "-d") {confAvgDeg = stod(value);}
         else if (key == "-a") {confAlpha = stod(value);}
         else if (key == "-s") {confSeed = stoi(value);}
+        else if (key == "-w") {noWorker = stoi(value);}
         else {
             std::cerr << "Unknown argument: " << key << std::endl;
             abort();
@@ -41,15 +42,21 @@ int main(int argc, char* argv[]) {
     }
 
     std::cout << "Parameters:\n"
-              "-n " << confNoPoints << "\n"
-              "-d " << confAvgDeg << "\n"
-              "-a " << confAlpha << "\n"
-              "-s " << confSeed
+              "-n No. Nodes   " << confNoPoints << "\n"
+              "-d Avg. Degree " << confAvgDeg << "\n"
+              "-a Alpha       " << confAlpha << "\n"
+              "-w No. Worker  " << noWorker << "\n"
+              "-s Seed        " << confSeed
     << std::endl;
 
     const auto threadsBefore = omp_get_max_threads();
 
     std::cout << "SIMD: NodePacking=" << NodePacking << " CoordPacking=" << CoordPacking << std::endl;
+#ifdef CROSS_REFERENCE
+    std::cout << "Cross-Referencing: Enabled" << std::endl;
+#else
+    std::cout << "Cross-Referencing: Disabled" << std::endl;
+#endif
 
 
 // run new generator

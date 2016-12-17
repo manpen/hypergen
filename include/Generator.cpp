@@ -307,6 +307,7 @@ void Generator::_reportEndStats() const {
         "Average Degree:     " << std::setw(12) << std::right << (2.0 * tot_stats.edges / _noNodes)
     << std::endl;
 
+#ifdef HISTOGRAM_ENABLE
     for(unsigned int b=0; b < activeSizes.size(); ++b) {
         std::cout << "Active size in band " << b << "\n";
         activeSizes[b].toStream(std::cout, "ACT-SZE-" + std::to_string(b));
@@ -320,7 +321,7 @@ void Generator::_reportEndStats() const {
     std::cout << "Total active size:\n";
     tot_stats.activeSizes.toStream(std::cout, "TOT-ACT-SZE");
     std::cout << std::endl;
-
+#endif
 }
 
 void Generator::_dumpAllPointsAndRequests(const std::vector<std::unique_ptr<Segment>>& segments, const std::string key) const {

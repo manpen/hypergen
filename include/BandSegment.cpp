@@ -79,46 +79,56 @@ unsigned int BandSegment::_AosToSoa(const Coord thresh) {
     const size_t vectorSize = (_active.size() + MinPacking - 1) / MinPacking;
 
     // transform AoS to SoA
-    _req_ids      .resize(vectorSize);
+    _req_ids      .resize(_active.size());
     _req_phi      .resize(vectorSize);
     _req_phi_start.resize(vectorSize);
     _req_phi_stop .resize(vectorSize);
-    _req_invsinh  .resize(vectorSize);
     _req_cosh     .resize(vectorSize);
 
-    if (_endgame) {
-        _req_old.resize(_active.size());
-    }
+#ifdef POINCARE
+    _req_poin_x   .resize(vectorSize);
+    _req_poin_y   .resize(vectorSize);
+    _req_poin_invr.resize(vectorSize);
+#else
+    _req_invsinh  .resize(vectorSize);
+#endif
+
+    _req_old.resize(vectorSize);
 
     if (!vectorSize)
         return 0;
 
     static_assert(CoordPacking == NodePacking, "Currently Node_v and Coord_v should be equal");
 
+    auto id_it = _req_ids.begin();
+
     for(unsigned int i=0; i < vectorSize-1; ++i) {
         for(unsigned int j=0; j<CoordPacking; ++j) {
             const Request& req = _active[CoordPacking*i+j];
 
-            _req_ids[i][j] = req.id;
+            *(id_it++) = req.id;
             _req_phi[i][j] = req.phi;
             _req_phi_start[i][j] = req.range.first;
             _req_phi_stop[i][j] = req.range.second;
+#ifdef POINCARE
+            _req_poin_x[i][j]    = req.poinX;
+            _req_poin_y[i][j]    = req.poinY;
+            _req_poin_invr[i][j] = req.poinInvLen;
+#else
             _req_invsinh[i][j] = req.r.invsinh;
+#endif
             _req_cosh[i][j] = req.r.cosh;
-        }
 
-        if (_endgame) {
-            for (unsigned int j = 0; j < CoordPacking; ++j) {
-                const Request &req = _active[CoordPacking * i + j];
-                _req_old[CoordPacking*i + j] = req.old();
+            if (_endgame) {
+                _req_old[i][j] = req.old();
             }
         }
+
     }
 
     {
         const unsigned int i = vectorSize-1;
 
-        _req_ids.back().setZero();
         _req_phi.back().setZero();
         _req_phi_start.back().setZero();
         _req_phi_stop.back().setZero();
@@ -128,19 +138,24 @@ unsigned int BandSegment::_AosToSoa(const Coord thresh) {
             const auto idx = CoordPacking*i+j;
             if (idx < _active.size()) {
                 const Request &req = _active[idx];
-                _req_ids.back()[j] = req.id;
+
+                *(id_it++) = req.id;
+
                 _req_phi.back()[j] = req.phi;
                 _req_phi_start.back()[j] = req.range.first;
                 _req_phi_stop.back()[j] = req.range.second;
+#ifdef POINCARE
+                _req_poin_x.back()[j] = req.poinX;
+                _req_poin_y.back()[j] = req.poinY;
+                _req_poin_invr.back()[j] = req.poinInvLen;
+#else
                 _req_invsinh.back()[j] = req.r.invsinh;
+#endif
                 _req_cosh.back()[j] = req.r.cosh;
-            }
-        }
 
-        if (_endgame) {
-            for (unsigned int j = CoordPacking * i; j < _active.size(); ++j) {
-                const Request &req = _active[j];
-                _req_old[j] = req.old();
+                if (_endgame) {
+                    _req_old.back()[j] = req.old();
+                }
             }
         }
     }

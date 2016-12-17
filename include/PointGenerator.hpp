@@ -5,6 +5,7 @@
 #include <random>
 
 #include "Geometry.hpp"
+#include "Point.hpp"
 #include "Summation.hpp"
 #include "Assert.hpp"
 

@@ -1,7 +1,11 @@
 #include "Histogram.hpp"
-#include <algorithm>
+#ifdef HISTOGRAM_ENABLE
+    #include <algorithm>
+    #include <numeric>
+#endif
 
 void Histogram::_dump(std::ostream &stream, std::string label) const {
+#ifdef HISTOGRAM_ENABLE
     const Count totalCount = std::accumulate(_map.cbegin(), _map.cend(), Count(0),
         [] (const Count c, const auto & it) {return c + it.second;});
 
@@ -26,14 +30,17 @@ void Histogram::_dump(std::ostream &stream, std::string label) const {
             << "Mean:        " << mean << " # " << label << "\n"
             << "Variance:    " << var << " # " << label
     << std::endl;
+#endif
 }
 
 Histogram Histogram::operator+(const Histogram &o) const {
     Histogram result(*this);
 
+#ifdef HISTOGRAM_ENABLE
     for(const auto& v : o._map) {
         result._map[v.first] += v.second;
     }
+#endif
 
     return result;
 }

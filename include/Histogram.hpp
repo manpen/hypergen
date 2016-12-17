@@ -6,6 +6,7 @@
 #include <ostream>
 #include <map>
 
+//#define HISTOGRAM_ENABLE
 
 class Histogram {
 public:
@@ -13,7 +14,9 @@ public:
     Histogram() {}
 
     void addPoint(Count key) {
+#ifdef HISTOGRAM_ENABLE
         _map[key]++;
+#endif
     }
 
     friend std::ostream& operator <<(std::ostream& stream, const Histogram& o) {

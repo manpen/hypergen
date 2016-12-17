@@ -6,14 +6,17 @@
 #include <vector>
 #include <algorithm>
 
+#include "Definitions.hpp"
+#include "Point.hpp"
 #include "Geometry.hpp"
+
 #include "PointGenerator.hpp"
 #include "Assert.hpp"
 #include "Histogram.hpp"
 
 #include <Vc/Allocator>
 
-#define SKIP_DIST_COMP
+//#define SKIP_DIST_COMP
 
 class BandSegment {
 public:
@@ -83,10 +86,27 @@ public:
             _stats_data.pointSizes.addPoint( std::distance(p, _points.cend() ) );
         }
 
+#ifdef POINCARE
+        const Coord_v threshR = static_cast<Coord_b>(_geometry.poincareR);
+#else
+        const Coord_v threshR = static_cast<Coord_b>(_geometry.coshR);
+#endif
+
         for(; p != _points.cend(); ++p) {
             const Point& pt = *p;
             if (pt.phi > threshold)
                 break;
+
+            const Coord_b ptrcosh = pt.r.cosh;
+            const Coord_b ptphi   = pt.phi;
+#ifdef POINCARE
+            const Coord_b poinX = pt.poinX;
+            const Coord_b poinY = pt.poinY;
+            const Coord_b poinInvR = pt.poinInvLen;
+#else
+            const Coord_b ptrsinh = pt.r.invsinh;
+#endif
+
 #ifndef SKIP_DIST_COMP
             const auto this_upper = static_cast<uint32_t>(
                     std::distance(_req_phi_start.cbegin(),
@@ -102,30 +122,31 @@ public:
                 << std::endl;
             }
 
-            const bool pointFromLastSegment = !_endgame || pt.old();
-
+            const Coord_m pointFromLastSegment(!_endgame || pt.old());
 
             for(unsigned int i = 0; i < this_upper; ++i) {
-                Vc::Mask<Coord> optScal;
-                for(unsigned int j=0; j<optScal.size(); ++j)
-                    optScal[j] = (_req_ids[i][j] != pt.id) && (!_endgame || pt.old() || _req_old[i*CoordPacking+j]);
-
-
-
                 const auto ptIsSmaller =
-                        ((_req_cosh[i] < pt.r.cosh) || (_req_cosh[i] == pt.r.cosh && _req_phi_start[i] < pt.phi))
-                        && optScal
-                        && _req_phi_stop[i] > pt.phi;
+                        ((_req_cosh[i] < ptrcosh) || (_req_cosh[i] == ptrcosh && _req_phi_start[i] < ptphi))
+                        && (pointFromLastSegment || _req_old[i])
+                        && _req_phi_stop[i] > ptphi;
 
                 if (ptIsSmaller.isEmpty())
                     continue;
 
 
                 // computations
-                const auto dist = (_req_cosh[i] * pt.r.cosh - _geometry.coshR) * (_req_invsinh[i] * pt.r.invsinh);
-                const auto cosDist = Vc::cos(_req_phi[i] - pt.phi);
+#ifdef POINCARE
+                const auto deltaX = _req_poin_x[i] - poinX;
+                const auto deltaY = _req_poin_y[i] - poinY;
 
+                const auto dist = (deltaX*deltaX + deltaY*deltaY) * poinInvR * _req_poin_invr[i];
+                const auto isEdge = ptIsSmaller && (dist < threshR);
+#else
+                const auto dist = (_req_cosh[i] * ptrcosh - threshR) * (_req_invsinh[i] * ptrsinh);
+                const auto cosDist = Vc::cos(_req_phi[i] - ptphi);
                 const auto isEdge = ptIsSmaller && (dist < cosDist);
+#endif
+
 
                 _stats_data.compares += CoordPacking;
                 _stats_data.edges += isEdge.count();
@@ -166,11 +187,14 @@ public:
                     const bool isEdge = ptIsSmaller && (reqFromLastSegment || pointFromLastSegment) && inRange;
 
                     _stats_data.edges += _stats && isEdge;
+*/
 
-                    if (isEdge) {
-                        edgeCallback({pt.id, _req_ids[i][j]});
+                for(unsigned int j=0; j < isEdge.size(); ++j) {
+                    const auto & neighbor = _req_ids[i*CoordPacking + j];
+                    if (isEdge[j] && pt.id != neighbor) {
+                        edgeCallback({pt.id, neighbor});
                     }
-                } */
+                }
             }
 #endif
         }
@@ -313,13 +337,20 @@ private:
     // Internal data structures (SoA)
     std::vector<Point> _points;
 
-    std::vector<Node_v,  Vc::Allocator<Node_v> > _req_ids;
+    std::vector<Node> _req_ids;
     std::vector<Coord_v, Vc::Allocator<Coord_v> > _req_phi;
     std::vector<Coord_v, Vc::Allocator<Coord_v> > _req_phi_start;
     std::vector<Coord_v, Vc::Allocator<Coord_v> > _req_phi_stop;
-    std::vector<Coord_v, Vc::Allocator<Coord_v> > _req_invsinh;
     std::vector<Coord_v, Vc::Allocator<Coord_v> > _req_cosh;
-    std::vector<bool>  _req_old;
+
+#ifdef POINCARE
+    std::vector<Coord_v, Vc::Allocator<Coord_v> > _req_poin_x;
+    std::vector<Coord_v, Vc::Allocator<Coord_v> > _req_poin_y;
+    std::vector<Coord_v, Vc::Allocator<Coord_v> > _req_poin_invr;
+#else
+    std::vector<Coord_v, Vc::Allocator<Coord_v> > _req_invsinh;
+#endif
+    std::vector<Coord_m, Vc::Allocator<Coord_m> > _req_old;
 
 
     unsigned int _AosToSoa(const Coord thresh);
