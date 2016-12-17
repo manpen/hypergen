@@ -3,20 +3,23 @@
 
 #include "include/Generator.hpp"
 
+#ifndef NDEBUG
+#define CROSS_REFERENCE
+#endif
+
 #include <iostream>
-#include <NetworKit/generators/HyperbolicGenerator.h>
-#include <NetworKit/auxiliary/Timer.h>
-#include <NetworKit/graph/GraphBuilder.h>
-#include <NetworKit/auxiliary/Parallel.h>
+#ifdef CROSS_REFERENCE
+    #include <NetworKit/generators/HyperbolicGenerator.h>
+    #include <NetworKit/auxiliary/Timer.h>
+    #include <NetworKit/graph/GraphBuilder.h>
+    #include <NetworKit/auxiliary/Parallel.h>
+#endif
 
 #include <cmath>
 
 #include <parallel/algorithm>
 #include <string>
 
-#ifndef NDEBUG
-#define CROSS_REFERENCE
-#endif
 
 int main(int argc, char* argv[]) {
     unsigned int noWorker = omp_get_max_threads();
