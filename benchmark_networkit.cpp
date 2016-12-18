@@ -1,54 +1,60 @@
 #include <iostream>
+
 #include <NetworKit/generators/HyperbolicGenerator.h>
 #include <NetworKit/auxiliary/Timer.h>
 #include <NetworKit/graph/GraphBuilder.h>
 #include <NetworKit/auxiliary/Parallel.h>
+#include <NetworKit/auxiliary/Random.h>
+
+#include "include/ScopedTimer.hpp"
 
 
+int main(int argc, char* argv[]) {
+    unsigned int confNoPoints = 1000;
+    double confAvgDeg = 5;
+    double confAlpha = 2.1;
+    unsigned int generatorAlgo = 0;
+    unsigned int seed = 1234;
 
-int main() {
-    std::cout << "simple demonstration of NetworKit as a library\n";
+    for(unsigned int i=1; i+1 < argc; i+=2) {
+        std::string key = argv[i];
+        std::string value = argv[i+1];
 
-    const uint64_t points = 10000000;
-    const double avgdeg = 50.0;
-    const double alpha = 3.0;
-    const double T = 0.0;
-    
-    NetworKit::HyperbolicGenerator gen(points, avgdeg, alpha, T);
-    
-    const double R = gen.getR();
-    const auto pointsData = gen.generatePoints(points, R, alpha, T);
- 
-    for(unsigned int m=2; m; --m) {
-        for(unsigned int r=0; r<1; r++) {
-            Aux::Timer timer;
-            timer.start();
-
-            std::string key;
-            switch(m=1) {
-                case 1:
-                    key = "Org";
-                    gen.generateColdOrig(pointsData.first, pointsData.second, R);
-                    break;
-
-                case 2:
-                    key = "Opt1";
-                    gen.generateColdOpt(pointsData.first, pointsData.second, R);
-                    break;
-
-                case 3:
-                    key = "Opt2";
-                    gen.generateColdOrig(pointsData.first, pointsData.second, R);
-                    break;
-                    
-                default:
-                    abort();
-            }
-            timer.stop();
-            std::cout << "Method: " << key << " took " << timer.elapsedMilliseconds() << "ms" << std::endl;
+        if      (key == "-n") {confNoPoints = stoll(value);}
+        else if (key == "-d") {confAvgDeg = stod(value);}
+        else if (key == "-a") {confAlpha = stod(value);}
+        else if (key == "-g") {generatorAlgo = stoi(value);}
+        else if (key == "-s") {seed = stoi(value);}
+        else {
+            std::cerr << "Unknown argument: " << key << std::endl;
+            abort();
         }
     }
-    
+
+    Aux::Random::setSeed(seed, false );
+
+    {
+        ScopedTimer timer;
+        NetworKit::HyperbolicGenerator gen(confNoPoints, confAvgDeg, confAlpha, 0.0);
+
+        const double R = gen.getR();
+        const auto pointsData = gen.generatePoints(confNoPoints, R, confAlpha, 0.0);
+
+        std::string key;
+        switch (generatorAlgo) {
+            case 0:
+                gen.generateColdOrig(pointsData.first, pointsData.second, R);
+                break;
+
+            case 1:
+                gen.generateColdOpt(pointsData.first, pointsData.second, R);
+                break;
+
+            default:
+                std::cerr << "Unknown Generator Algorithm." << std::endl;
+                abort();
+        }
+    }
 
     return 0;
 

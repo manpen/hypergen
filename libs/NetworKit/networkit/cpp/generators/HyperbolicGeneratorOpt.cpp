@@ -105,8 +105,9 @@ Graph HyperbolicGenerator::generateColdOpt(const vector<double> &angles, const v
     };
 
     Aux::Timer timer;
-    timer.start();    
-    #pragma omp parallel reduction(+:numEdges,numCompares)
+    timer.start();
+    uint64_t nodeAccum = 0;
+    #pragma omp parallel reduction(+:numEdges,numCompares,nodeAccum)
     {
         index id = omp_get_thread_num();
         threadtimers[id].start();
@@ -136,9 +137,10 @@ Graph HyperbolicGenerator::generateColdOpt(const vector<double> &angles, const v
                         
                         
 
-                        const double deltaPhi = M_PI - abs(M_PI - abs(angles[i] - band.pt_theta[k]));
+                        const double deltaPhi = angles[i] - band.pt_theta[k];
                         if ( (pt_cosh[i]*band.pt_cosh[k] - coshR) * pt_invsinh[i]*band.pt_invsinh[k] <= cos(deltaPhi) ) {
                             ++numEdges;
+                            nodeAccum += i + band.pt_id[k];
                         }
                     }
                 };
@@ -171,7 +173,8 @@ Graph HyperbolicGenerator::generateColdOpt(const vector<double> &angles, const v
     }
     timer.stop();
     INFO("Generating Edges took ", timer.elapsedMilliseconds(), " milliseconds.");
-    INFO("Needed ", numCompares, " compared (",  (100.0 * numEdges / numCompares), "% successful)");
+    INFO("Required ", numCompares, " compares (",  (100.0 * numEdges / numCompares), "% successful)");
+    INFO("Node Accum ", nodeAccum);
     INFO("Produced ", numEdges, " edges");
     
     return {};

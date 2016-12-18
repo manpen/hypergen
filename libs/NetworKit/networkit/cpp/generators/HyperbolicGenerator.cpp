@@ -168,7 +168,8 @@ Graph HyperbolicGenerator::generateColdOrig(const vector<double> &angles, const 
 
         uint64_t numEdges = 0;
         uint64_t numCompares = 0;
-	#pragma omp parallel reduction(+:numEdges,numCompares)
+		uint64_t nodeAccum = 0;
+	#pragma omp parallel reduction(+:numEdges,numCompares,nodeAccum)
 	{
 		index id = omp_get_thread_num();
 		threadtimers[id].start();
@@ -213,7 +214,8 @@ Graph HyperbolicGenerator::generateColdOrig(const vector<double> &angles, const 
 				for (index j : near) {
 					if (j >= n) ERROR("Node ", j, " prospective neighbour of ", i, " does not actually exist. Oops.");
 					if(radii[j] > radii[i] || (radii[j] == radii[i] && angles[j] < angles[i])) {
-                        result.addHalfEdge(i, j);
+                        //result.addHalfEdge(i, j);
+						nodeAccum += i + j;
                         numEdges++;
                     }
 				}
@@ -222,10 +224,12 @@ Graph HyperbolicGenerator::generateColdOrig(const vector<double> &angles, const 
 		threadtimers[id].stop();
 	}
 	timer.stop();
-	INFO("Generating Edges took ", timer.elapsedMilliseconds(), " milliseconds.");
-        INFO("Needed ", numCompares, " compared (",  (100.0 * numEdges / numCompares), "% successful)");        
-        INFO("Produced ", numEdges, " edges");
+    INFO("Generating Edges took ", timer.elapsedMilliseconds(), " milliseconds.");
+    INFO("Required ", numCompares, " compares (",  (100.0 * numEdges / numCompares), "% successful)");
+    INFO("Node Accum ", nodeAccum);
+    INFO("Produced ", numEdges, " edges");
 	return result.toGraph(!directSwap, true);
+
 }
 
 

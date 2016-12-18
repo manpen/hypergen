@@ -71,6 +71,7 @@ int main(int argc, char* argv[]) {
     std::vector<EdgeId> nodeCounters(noWorker);
     std::vector<EdgeId> edgeCounters(noWorker);
     std::vector<std::vector<Edge>> edges(noWorker);
+    std::vector<Node> nodeAccum(noWorker*8);
 
     Generator gen(confNoPoints, confAvgDeg, confAlpha, confSeed, noWorker);
     {
@@ -94,6 +95,8 @@ int main(int argc, char* argv[]) {
             assert(e.first != e.second);
 
             edges.at(segmentId).push_back(e);
+#else
+            nodeAccum[8*segmentId] += (e.first + e.second);
 #endif
         };
 
@@ -109,6 +112,10 @@ int main(int argc, char* argv[]) {
             std::cout << "Missing point " << i << std::endl;
         }
     }
+#endif
+
+#ifndef CROSS_REFERENCE
+    std::cout << "Xor key is " << std::accumulate(nodeAccum.cbegin(), nodeAccum.cend(), 0) << std::endl;
 #endif
 
     std::cout << "Set number of threads to: " << threadsBefore << std::endl;
