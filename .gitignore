@@ -1,1 +1,10 @@
-libs/NetworKit/
+debug*/
+release*/
+build*/
+vtune*/
+*.*~
+.*~
+*.swp
+*.a
+*.o
+.*
