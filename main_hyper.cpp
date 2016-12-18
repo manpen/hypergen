@@ -26,7 +26,7 @@ int main(int argc, char* argv[]) {
     
     unsigned int confNoPoints = 1000;
     double confAvgDeg = 5;
-    double confAlpha = 2.1;
+    double confExp = 3;
     Seed confSeed = 1234;
 
     for(unsigned int i=1; i+1 < argc; i+=2) {
@@ -35,7 +35,7 @@ int main(int argc, char* argv[]) {
 
         if      (key == "-n") {confNoPoints = stoll(value);}
         else if (key == "-d") {confAvgDeg = stod(value);}
-        else if (key == "-a") {confAlpha = stod(value);}
+        else if (key == "-e") {confExp = stod(value);}
         else if (key == "-s") {confSeed = stoi(value);}
         else if (key == "-w") {noWorker = stoi(value);}
         else {
@@ -43,11 +43,14 @@ int main(int argc, char* argv[]) {
             abort();
         }
     }
+    double confAlpha = 0.5 * (confExp - 1.0);
+
 
     std::cout << "Parameters:\n"
               "-n No. Nodes   " << confNoPoints << "\n"
               "-d Avg. Degree " << confAvgDeg << "\n"
-              "-a Alpha       " << confAlpha << "\n"
+              "-e Exponent    " << confExp << "\n"
+              "   Alpha       " << confAlpha << "\n"
               "-w No. Worker  " << noWorker << "\n"
               "-s Seed        " << confSeed
     << std::endl;
@@ -115,7 +118,7 @@ int main(int argc, char* argv[]) {
 #endif
 
 #ifndef CROSS_REFERENCE
-    std::cout << "Xor key is " << std::accumulate(nodeAccum.cbegin(), nodeAccum.cend(), 0) << std::endl;
+    std::cout << "Accum key is " << std::accumulate(nodeAccum.cbegin(), nodeAccum.cend(), 0) << std::endl;
 #endif
 
     std::cout << "Set number of threads to: " << threadsBefore << std::endl;

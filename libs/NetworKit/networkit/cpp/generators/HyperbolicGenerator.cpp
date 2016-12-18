@@ -228,6 +228,7 @@ Graph HyperbolicGenerator::generateColdOrig(const vector<double> &angles, const 
     INFO("Required ", numCompares, " compares (",  (100.0 * numEdges / numCompares), "% successful)");
     INFO("Node Accum ", nodeAccum);
     INFO("Produced ", numEdges, " edges");
+	INFO("Average Degree: ", 2.0 * numEdges / n);
 	return result.toGraph(!directSwap, true);
 
 }

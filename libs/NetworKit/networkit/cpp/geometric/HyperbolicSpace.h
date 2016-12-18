@@ -154,6 +154,7 @@ public:
 		do {
 			currentR = (lowerBound + upperBound)/2;
 			double currentK = getExpectedDegree(n, alpha, currentR);
+			std::cout << "n: " << n << " k: " << k << " alpha: " << alpha << " curK: " << currentK << " R: " << currentR << std::endl;
 			if (currentK < k) {
 				upperBound = currentR;
 			} else {
