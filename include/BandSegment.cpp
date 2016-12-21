@@ -21,7 +21,7 @@ BandSegment::BandSegment(Node firstNode, Count nodes, CoordInter phiRange, Coord
     , _phiRange(phiRange)
     , _radRange(radRange)
     , _upperLimit(radRange.second)
-    , _batchSize(4*geometry.avgDeg)
+    , _batchSize(1*geometry.avgDeg)
     , _generator(_firstNode, _numberOfNodes, _phiRange, _radRange, _geometry, seed)
 {}
 
@@ -75,7 +75,7 @@ void BandSegment::_propagateRequests(const std::vector<Request>& reqs, BandSegme
     }
 }
 
-unsigned int BandSegment::_AosToSoa(const Coord thresh) {
+unsigned int BandSegment::_AosToSoa(const Coord minThresh, const Coord maxThresh) {
     const size_t vectorSize = (_active.size() + CoordPacking - 1) / CoordPacking;
 
     // transform AoS to SoA
@@ -100,64 +100,46 @@ unsigned int BandSegment::_AosToSoa(const Coord thresh) {
 
     auto id_it = _req_ids.begin();
 
-    for(unsigned int i=0; i < vectorSize-1; ++i) {
-        for(unsigned int j=0; j<CoordPacking; ++j) {
-            const Request& req = _active[CoordPacking*i+j];
+    unsigned int i=0;
+    unsigned int j=0;
 
-            *(id_it++) = req.id;
-            _req_phi[i][j] = req.phi;
-            _req_phi_start[i][j] = req.range.first;
-            _req_phi_stop[i][j] = req.range.second;
+    for(const Request& req : _active) {
+        if (req.range.second < minThresh || req.range.first > maxThresh)
+            continue;
+
+        *(id_it++) = req.id;
+        _req_phi[i][j] = req.phi;
+        _req_phi_start[i][j] = req.range.first;
+        _req_phi_stop[i][j] = req.range.second;
 #ifdef POINCARE
-            _req_poin_x[i][j]    = req.poinX;
-            _req_poin_y[i][j]    = req.poinY;
-            _req_poin_invr[i][j] = req.poinInvLen;
+        _req_poin_x[i][j]    = req.poinX;
+        _req_poin_y[i][j]    = req.poinY;
+        _req_poin_invr[i][j] = req.poinInvLen;
 #else
-            _req_invsinh[i][j] = req.r.invsinh;
+        _req_invsinh[i][j] = req.r.invsinh;
 #endif
-            _req_cosh[i][j] = req.r.cosh;
+        _req_cosh[i][j] = req.r.cosh;
 
-            if (_endgame) {
-                _req_old[i][j] = req.old();
-            }
+        if (_endgame) {
+            _req_old[i][j] = req.old();
+        }
+
+        if (++j == CoordPacking) {
+            j = 0;
+            i++;
         }
     }
 
-    {
-        const unsigned int i = vectorSize-1;
-
-        _req_phi.back().setZero();
-        _req_phi_start.back().setZero();
-        _req_phi_stop.back().setZero();
-        _req_cosh.back() = 1e10;
-
-        for(unsigned int j=0; j<CoordPacking; ++j) {
-            const auto idx = CoordPacking*i+j;
-            if (idx < _active.size()) {
-                const Request &req = _active[idx];
-
-                *(id_it++) = req.id;
-
-                _req_phi.back()[j] = req.phi;
-                _req_phi_start.back()[j] = req.range.first;
-                _req_phi_stop.back()[j] = req.range.second;
-#ifdef POINCARE
-                _req_poin_x.back()[j] = req.poinX;
-                _req_poin_y.back()[j] = req.poinY;
-                _req_poin_invr.back()[j] = req.poinInvLen;
-#else
-                _req_invsinh.back()[j] = req.r.invsinh;
-#endif
-                _req_cosh.back()[j] = req.r.cosh;
-
-                if (_endgame) {
-                    _req_old.back()[j] = req.old();
-                }
-            }
+    if (j) {
+        for (; j < CoordPacking; ++j) {
+            _req_cosh[i][j] = std::numeric_limits<Coord>::max();
         }
+        ++i;
     }
 
-    return vectorSize;
+    assert(i <= vectorSize);
+
+    return i;
 }
 
 

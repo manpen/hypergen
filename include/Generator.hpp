@@ -109,6 +109,7 @@ public:
             _dumpAllPointsAndRequests(_segments, "s2");
             _dumpAllPointsAndRequests(_endgame_segments, "e2");
 
+            #pragma omp parallel for
             for(unsigned int s=0; s<_segments.size(); ++s) {
                 auto &segment = *_segments[s];
                 auto &firstBand = segment.getBand(_firstStreamingBand);

@@ -4,7 +4,7 @@
 #include "include/Generator.hpp"
 
 #ifndef NDEBUG
-#define CROSS_REFERENCE
+//#define CROSS_REFERENCE
 #endif
 
 #include <iostream>

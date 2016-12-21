@@ -57,14 +57,14 @@ public:
 
         _checkInvariants();
         _mergeInsertionBuffer(bandAbove);
-        const auto upper = _AosToSoa(_points.back().phi);
-        const auto maxNode = _firstNode + _numberOfNodes;
-        
+        const auto upper = _AosToSoa(_points.front().phi, _points.back().phi);
+
         if (!upper) {
             _no_valid_requests = true;
             return;
         }
-        
+
+        const auto maxNode = _firstNode + _numberOfNodes;
         _no_valid_requests = false;
         const auto startEnd = std::upper_bound(_req_phi_start.cbegin(), _req_phi_start.cbegin() + upper, _points.back().phi,
             [] (const Coord thresh, const Coord_v& start) {return thresh < start[0];}
@@ -126,14 +126,13 @@ public:
             const Coord_m pointFromLastSegment(!_endgame || pt.old());
 
             for(unsigned int i = 0; i < this_upper; ++i) {
-                const auto ptIsSmaller =
-                        ((_req_cosh[i] < ptrcosh) || (_req_cosh[i] == ptrcosh && _req_phi_start[i] < ptphi))
-                        && (pointFromLastSegment || _req_old[i])
-                        && _req_phi_stop[i] > ptphi;
-
-                if (unlikely(ptIsSmaller.isEmpty()))
+                auto ptIsSmaller = _req_phi_stop[i] > ptphi;
+                if (ptIsSmaller.isEmpty())
                     continue;
 
+                ptIsSmaller = ptIsSmaller &&
+                        ((_req_cosh[i] < ptrcosh) || (_req_cosh[i] == ptrcosh && _req_phi_start[i] < ptphi))
+                        && (pointFromLastSegment || _req_old[i]);
 
                 // computations
 #ifdef POINCARE
@@ -150,13 +149,13 @@ public:
 #endif
 
                 _stats_data.compares += CoordPacking;
-                _stats_data.edges += isEdge.count();
-
                 for(unsigned int j=0; j < isEdge.size(); ++j) {
                     const auto & neighbor = _req_ids[i*CoordPacking + j];
 
-                    if (unlikely(isEdge[j] && pt.id != neighbor))
+                    if (isEdge[j] && pt.id != neighbor) {
                         edgeCallback({pt.id, neighbor});
+                        _stats_data.edges++;
+                    }
                 }
             }
 #endif
@@ -269,7 +268,7 @@ public:
         return _stats_data;
     }
 
-    const Coord nextRequestLB() const {
+    Coord nextRequestLB() const {
         return _generator.nextRequestLB();
     }
 
@@ -316,7 +315,7 @@ private:
     std::vector<Coord_m, Vc::Allocator<Coord_m> > _req_old;
 
 
-    unsigned int _AosToSoa(const Coord thresh);
+    unsigned int _AosToSoa(const Coord minThresh, const Coord maxThresh);
     void _mergeInsertionBuffer(BandSegment& bandAbove);
     void _propagateRequests(const std::vector<Request>& reqs, BandSegment& bandAbove);
 

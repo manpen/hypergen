@@ -16,7 +16,7 @@ Generator::Generator(Count n, Coord avgDeg, Coord alpha, Seed seed, uint32_t wor
 {
     DefaultPrng randgen(seed);
     auto nodesPerSegment = RandomHelper::sampleMultinomial(n, worker, randgen);
-    
+
     // print out global stats
     if (_stats) { 
         std::cout << "Number of nodes requested: " << n << "\n"
@@ -254,7 +254,10 @@ unsigned int Generator::_computeFirstStreamingBand(const double thresholdSize) c
             break;
     }
 
-    assert(firstStreamingBand+1 < _bandLimits.size());
+    if (firstStreamingBand+1 >= _bandLimits.size()) {
+        std::cerr << "No streaming band; increase graph size" << std::endl;
+        abort();
+    }
     return firstStreamingBand;
 }
 
@@ -279,11 +282,11 @@ void Generator::_reportEndStats() const {
     for(unsigned int b=0; b < _bandLimits.size() - 1; ++b) {
         const BandSegment::Statistics stats =
             std::accumulate(_segments.cbegin(), _segments.cend(), BandSegment::Statistics{},
-                            [&] (const auto& s, const auto& seg) {return s + seg->getBand(b).getStatistics();});
+                            [&] (const BandSegment::Statistics& s, const std::unique_ptr<Segment>& seg) {return s + seg->getBand(b).getStatistics();});
 
         const BandSegment::Statistics eg_stats =
                 std::accumulate(_endgame_segments.cbegin(), _endgame_segments.cend(), BandSegment::Statistics{},
-                                [&] (const auto& s, const auto& seg) {return s + seg->getBand(b).getStatistics();});
+                                [&] (const BandSegment::Statistics& s, const std::unique_ptr<Segment>& seg) {return s + seg->getBand(b).getStatistics();});
 
         tot_stats = tot_stats + stats + eg_stats;
 
