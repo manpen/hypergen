@@ -76,27 +76,30 @@ void BandSegment::_propagateRequests(const std::vector<Request>& reqs, BandSegme
 }
 
 unsigned int BandSegment::_AosToSoa(const Coord minThresh, const Coord maxThresh) {
-    const size_t vectorSize = (_active.size() + CoordPacking - 1) / CoordPacking;
+    if (_active.empty())
+        return 0;
 
     // transform AoS to SoA
-    _req_ids      .resize(_active.size());
-    _req_phi      .resize(vectorSize);
-    _req_phi_start.resize(vectorSize);
-    _req_phi_stop .resize(vectorSize);
-    _req_cosh     .resize(vectorSize);
+    if (_req_ids.size() < _active.size()) {
+        const size_t vectorSize = 2 * _active.size() / CoordPacking;
 
-#ifdef POINCARE
-    _req_poin_x   .resize(vectorSize);
-    _req_poin_y   .resize(vectorSize);
-    _req_poin_invr.resize(vectorSize);
-#else
-    _req_invsinh  .resize(vectorSize);
-#endif
 
-    _req_old.resize(vectorSize);
+        _req_ids.resize(2 * _active.size());
+        _req_phi.resize(vectorSize);
+        _req_phi_start.resize(vectorSize);
+        _req_phi_stop.resize(vectorSize);
+        _req_cosh.resize(vectorSize);
 
-    if (!vectorSize)
-        return 0;
+        #ifdef POINCARE
+        _req_poin_x.resize(vectorSize);
+        _req_poin_y.resize(vectorSize);
+        _req_poin_invr.resize(vectorSize);
+        #else
+        _req_invsinh  .resize(vectorSize);
+        #endif
+
+        _req_old.resize(vectorSize);
+    }
 
     auto id_it = _req_ids.begin();
 
@@ -136,8 +139,6 @@ unsigned int BandSegment::_AosToSoa(const Coord minThresh, const Coord maxThresh
         }
         ++i;
     }
-
-    assert(i <= vectorSize);
 
     return i;
 }

@@ -55,9 +55,12 @@ public:
 
 
         // Streaming Phase
+        std::vector<Coord> maxPhis(_segments.size(), 0.0);
+
         {
             ScopedTimer timer("Main task");
             omp_set_num_threads(_segments.size());
+
             #pragma omp parallel for
             for (unsigned int s = 0; s < _segments.size(); ++s) {
                 auto &segment = *_segments[s];
@@ -77,19 +80,8 @@ public:
                         );
                     } while (!finalize);
                 }
-            }
-        }
 
-        _dumpAllPointsAndRequests(_segments, "s1");
-        _dumpAllPointsAndRequests(_endgame_segments, "e1");
-        std::cout << "-----------------" << std::endl;
-
-        if(1) {
-            ScopedTimer timer("Endgame");
-
-            std::vector<Coord> maxPhis(_segments.size(), 0.0);
-
-            for(unsigned int s=0; s<_segments.size(); ++s) {
+                // prepare endgame
                 const auto endgameSeg = (s + 1) % _segments.size();
 
                 for (unsigned int b = _firstStreamingBand; b < noBands; ++b) {
@@ -104,32 +96,26 @@ public:
 
                 if (_stats)
                     std::cout << "maxPhi: " << (maxPhis[endgameSeg] - _endgame_segments[endgameSeg]->getPhiRange().first) << ", conservative: " <<  + _maxRepeatRange << std::endl;
-            }
 
-            _dumpAllPointsAndRequests(_segments, "s2");
-            _dumpAllPointsAndRequests(_endgame_segments, "e2");
 
-            #pragma omp parallel for
-            for(unsigned int s=0; s<_segments.size(); ++s) {
-                auto &segment = *_segments[s];
-                auto &firstBand = segment.getBand(_firstStreamingBand);
+                // execute endgame
+                {
+                    bool finalize = true;
 
-                bool finalize = true;
-
-                do {
-                    finalize = !finalize;
-                    _endgame_segments[s]->advance(
-                        _firstStreamingBand,
-                        maxPhis[s], //firstBand.getPhiRange().first + _maxRepeatRange,
-                        finalize,
-                        [&] (const Edge& e) {edgeCB(e, s);},
-                        [&] (const Point& p) {pointCB(p, s);}
-                    );
-                } while(!finalize);
+                    do {
+                        finalize = !finalize;
+                        _endgame_segments[s]->advance(
+                                _firstStreamingBand,
+                                maxPhis[s], //firstBand.getPhiRange().first + _maxRepeatRange,
+                                finalize,
+                                [&] (const Edge& e) {edgeCB(e, s);},
+                                [&] (const Point& p) {pointCB(p, s);}
+                        );
+                    } while(!finalize);
+                }
             }
         }
 
-        
         _reportEndStats();
     }
     
