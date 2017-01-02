@@ -6,11 +6,9 @@
 Segment::Segment(Node firstNode, Count nodes, 
         CoordInter phiRange, const Geometry& geometry,
         const std::vector<Coord>& limits,
-        Seed seed,
-        bool endgame
+        Seed seed
 ) 
-    : _endgame(endgame)
-    , _geometry(geometry)
+    : _geometry(geometry)
     , _phiRange(phiRange)
 {
     assert(!limits.empty());
@@ -36,13 +34,12 @@ Segment::Segment(Node firstNode, Count nodes,
     // instantiate an instance for each band
     Node n0 = firstNode;
     for(unsigned int i=0; i < pointsInBand.size(); ++i) {
-        _bands.emplace_back( new BandSegment{
+        _bands.push_back( std::make_unique<BandSegment>(
             n0, pointsInBand[i],
-            phiRange, {limits[i], limits[i+1]},
+            phiRange, CoordInter{limits[i], limits[i+1]},
             _geometry,
-            static_cast<uint32_t>(randgen()),
-            _endgame
-        });
+            static_cast<uint32_t>(randgen())
+        ));
         n0 += pointsInBand[i];
     }
 }

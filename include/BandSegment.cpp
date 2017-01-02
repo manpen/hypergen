@@ -3,7 +3,7 @@
 #include <utility>
 #include <tuple>
 #include <algorithm>
-#include <cassert>
+#include "Assert.hpp"
 
 template <typename T>
 static void merge_vectors(std::vector<T>& srcdest, const std::vector<T>& add, std::vector<T>& helper) {
@@ -13,9 +13,8 @@ static void merge_vectors(std::vector<T>& srcdest, const std::vector<T>& add, st
 }
 
 
-BandSegment::BandSegment(Node firstNode, Count nodes, CoordInter phiRange, CoordInter radRange, const Geometry& geometry, Seed seed, bool endgame)
-    : _endgame(endgame)
-    , _firstNode(firstNode)
+BandSegment::BandSegment(Node firstNode, Count nodes, CoordInter phiRange, CoordInter radRange, const Geometry& geometry, Seed seed)
+    : _firstNode(firstNode)
     , _numberOfNodes(nodes)
     , _geometry(geometry)
     , _phiRange(phiRange)
@@ -75,75 +74,6 @@ void BandSegment::_propagateRequests(const std::vector<Request>& reqs, BandSegme
     }
 }
 
-unsigned int BandSegment::_AosToSoa(const Coord minThresh, const Coord maxThresh) {
-    if (_active.empty())
-        return 0;
-
-    // transform AoS to SoA
-    if (_req_ids.size() < _active.size()) {
-        const size_t vectorSize = 2 * _active.size() / CoordPacking;
-
-
-        _req_ids.resize(2 * _active.size());
-        _req_phi.resize(vectorSize);
-        _req_phi_start.resize(vectorSize);
-        _req_phi_stop.resize(vectorSize);
-        _req_cosh.resize(vectorSize);
-
-        #ifdef POINCARE
-        _req_poin_x.resize(vectorSize);
-        _req_poin_y.resize(vectorSize);
-        _req_poin_invr.resize(vectorSize);
-        #else
-        _req_invsinh  .resize(vectorSize);
-        #endif
-
-        _req_old.resize(vectorSize);
-    }
-
-    auto id_it = _req_ids.begin();
-
-    unsigned int i=0;
-    unsigned int j=0;
-
-    for(const Request& req : _active) {
-        if (req.range.second < minThresh || req.range.first > maxThresh)
-            continue;
-
-        *(id_it++) = req.id;
-        _req_phi[i][j] = req.phi;
-        _req_phi_start[i][j] = req.range.first;
-        _req_phi_stop[i][j] = req.range.second;
-#ifdef POINCARE
-        _req_poin_x[i][j]    = req.poinX;
-        _req_poin_y[i][j]    = req.poinY;
-        _req_poin_invr[i][j] = req.poinInvLen;
-#else
-        _req_invsinh[i][j] = req.r.invsinh;
-#endif
-        _req_cosh[i][j] = req.r.cosh;
-
-        if (_endgame) {
-            _req_old[i][j] = req.old();
-        }
-
-        if (++j == CoordPacking) {
-            j = 0;
-            i++;
-        }
-    }
-
-    if (j) {
-        for (; j < CoordPacking; ++j) {
-            _req_cosh[i][j] = std::numeric_limits<Coord>::max();
-        }
-        ++i;
-    }
-
-    return i;
-}
-
-
 void BandSegment::_mergeInsertionBuffer(BandSegment& bandAbove) {
     if (_insertion_buffer.empty())
         return;
@@ -160,13 +90,11 @@ void BandSegment::_mergeInsertionBuffer(BandSegment& bandAbove) {
 void BandSegment::copyGlobalState(const BandSegment& band, Coord deltaPhi) {
     const Coord threshold = _phiRange.first + deltaPhi;
 
-    assert(_endgame);
-
 // copy requests
     {
-        assert(_active.empty());
-        assert(_insertion_buffer.empty());
-        assert(band._insertion_buffer.empty());
+        ASSERT(_active.empty());
+        ASSERT(_insertion_buffer.empty());
+        ASSERT(band._insertion_buffer.empty());
         const auto end = std::upper_bound(band.getRequests().cbegin(), band.getRequests().cend(), threshold,
                                           [] (const Coord thresh, const Request& req) {return thresh < req.range.first;}
         );
@@ -175,17 +103,15 @@ void BandSegment::copyGlobalState(const BandSegment& band, Coord deltaPhi) {
 }
 
 Coord BandSegment::prepareEndgame(const BandSegment& band) {
-    //assert(band.getInsertionBuffer().empty());
-    assert(_endgame);
-
     Coord maxPhi = _phiRange.first;
+    ASSERT(_insertion_buffer.empty());
 
 // copy points
     //assert(_points.empty());
     for(auto pt : band.getPoints()) {
         if (pt.phi > 2*M_PI) {
             pt.phi -= 2 * M_PI;
-            assert(_phiRange.first == 0);
+            ASSERT_EQ(_phiRange.first, 0.0);
         }
 
         _points.push_back(pt);
@@ -197,9 +123,6 @@ Coord BandSegment::prepareEndgame(const BandSegment& band) {
 
 
 // copy requests
-    assert(_insertion_buffer.empty());
-
-
     auto extractRequests = [&] (const std::vector<Request>& reqs) {
         std::vector<Request> newReqs;
         for(auto req : reqs) {
@@ -207,7 +130,7 @@ Coord BandSegment::prepareEndgame(const BandSegment& band) {
                 req.range.first = 0;
                 req.range.second -= 2*M_PI;
 
-                assert(_phiRange.first == 0);
+                ASSERT_EQ(_phiRange.first, 0.0);
             }
 
             if (req.phi >= 2*M_PI)
@@ -235,18 +158,11 @@ Coord BandSegment::prepareEndgame(const BandSegment& band) {
 
 #ifndef NDEBUG
 void BandSegment::_checkInvariants() const {
-    assert(std::is_sorted(_points.cbegin(), _points.cend(),
+    ASSERT(std::is_sorted(_points.cbegin(), _points.cend(),
         [] (const auto& a, const auto &b) {return a.phi < b.phi;}));
-    assert(std::is_sorted(_active.cbegin(), _active.cend(),
+    ASSERT(std::is_sorted(_active.cbegin(), _active.cend(),
         [] (const auto& a, const auto &b) {return a.range.first < b.range.first;}));
-    assert(std::is_sorted(_insertion_buffer.cbegin(), _insertion_buffer.cend(),
+    ASSERT(std::is_sorted(_insertion_buffer.cbegin(), _insertion_buffer.cend(),
         [] (const auto& a, const auto &b) {return a.range.first < b.range.first;}));
-    
-    for(const auto& pt : _points) {
-        //assert(_endgame || pt.id >= _firstNode);
-        //assert(_endgame || pt.id  < _firstNode + _numberOfNodes);
-        //assert(_endgame || pt.phi >= _phiRange.first);
-        //assert(_endgame || pt.phi < _phiRange.second);
-    }
 };
 #endif

@@ -214,7 +214,7 @@ Graph HyperbolicGenerator::generateColdOrig(const vector<double> &angles, const 
 				for (index j : near) {
 					if (j >= n) ERROR("Node ", j, " prospective neighbour of ", i, " does not actually exist. Oops.");
 					if(radii[j] > radii[i] || (radii[j] == radii[i] && angles[j] < angles[i])) {
-                        //result.addHalfEdge(i, j);
+                        result.addHalfEdge(i, j);
 						nodeAccum += i + j;
                         numEdges++;
                     }

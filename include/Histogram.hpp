@@ -6,30 +6,28 @@
 #include <ostream>
 #include <map>
 
-//#define HISTOGRAM_ENABLE
-
+template<bool Enabled=true>
 class Histogram {
 public:
-
-    Histogram() {}
+    constexpr static bool enabled {Enabled};
 
     void addPoint(Count key) {
-#ifdef HISTOGRAM_ENABLE
-        _map[key]++;
-#endif
+        if (Enabled)
+            _map[key]++;
     }
 
     friend std::ostream& operator <<(std::ostream& stream, const Histogram& o) {
-        o._dump(stream, "");
+        if (Enabled)
+            o._dump(stream, "");
         return stream;
     }
 
     void toStream(std::ostream& stream, std::string s) const {
-        _dump(stream, s);
+        if (Enabled)
+            _dump(stream, s);
     }
 
     Histogram operator+(const Histogram& o) const;
-
 
 protected:
     std::map<Count, Count> _map;

@@ -16,18 +16,16 @@
 
 #include <Vc/Allocator>
 
-//#define SKIP_DIST_COMP
-
 class BandSegment {
 public:
     BandSegment() = delete;
-    BandSegment(Node firstNode, Count nodes, CoordInter phiRange, CoordInter radRange, const Geometry& geometry, Seed seed, bool endGame);
+    BandSegment(Node firstNode, Count nodes, CoordInter phiRange, CoordInter radRange, const Geometry& geometry, Seed seed);
 
     // produce new points and request; delete exhausted requests from _active
     void generatePoints(BandSegment& bandAbove);
     void generateGlobalPoints();
     
-    template <typename EdgeCallback>
+    template <bool Endgame, typename EdgeCallback>
     void generateEdges(EdgeCallback edgeCallback, BandSegment& bandAbove, Coord threshold = 2*M_PI) {
         if (_stats) {
             _stats_data.activeSizes.addPoint( _active.size() );
@@ -57,7 +55,7 @@ public:
 
         _checkInvariants();
         _mergeInsertionBuffer(bandAbove);
-        const auto upper = _AosToSoa(_points.front().phi, _points.back().phi);
+        const auto upper = _AosToSoa<Endgame>(_points.front().phi, _points.back().phi);
 
         if (!upper) {
             _no_valid_requests = true;
@@ -123,16 +121,26 @@ public:
                 << std::endl;
             }
 
-            const Coord_m pointFromLastSegment(!_endgame || pt.old());
+            const Coord_m pointFromLastSegment(!Endgame || pt.old());
+
+            unsigned int noCandidates = 0;
+            unsigned int noNeighbors = 0;
+
+            noCandidates = this_upper * _req_phi[0].size();
 
             for(unsigned int i = 0; i < this_upper; ++i) {
-                auto ptIsSmaller = _req_phi_stop[i] > ptphi;
-                if (ptIsSmaller.isEmpty())
+                auto ptIsSmaller = (_req_phi_stop[i] > ptphi) && (_req_phi_start[i] <= ptphi);
+                if (ptIsSmaller.isEmpty()) {
+                    //noCandidates += _req_phi_start[0].size();
                     continue;
+                }
 
                 ptIsSmaller = ptIsSmaller &&
-                        ((_req_cosh[i] < ptrcosh) || (_req_cosh[i] == ptrcosh && _req_phi_start[i] < ptphi))
-                        && (pointFromLastSegment || _req_old[i]);
+                        ((_req_cosh[i] <= ptrcosh) || (_req_cosh[i] == ptrcosh && _req_phi[i] < ptphi));
+
+                if (Endgame)
+                    ptIsSmaller = ptIsSmaller &&
+                        (pointFromLastSegment || _req_old[i]);
 
                 // computations
 #ifdef POINCARE
@@ -155,9 +163,16 @@ public:
                     if (isEdge[j] && pt.id != neighbor) {
                         edgeCallback({pt.id, neighbor});
                         _stats_data.edges++;
+                        noNeighbors += Statistics::enableNeighbors;
                     }
+
+                    //if (Statistics::enableCandidates)
+                    //    noCandidates += ptIsSmaller[j] && pt.id != neighbor;
                 }
             }
+
+            _stats_data.candidates.addPoint(noCandidates);
+            _stats_data.neighbors.addPoint(noNeighbors);
 #endif
         }
 
@@ -244,19 +259,30 @@ public:
     }
 
     struct Statistics {
+        constexpr static bool enableHistograms { false };
+        constexpr static bool enableActiveSizes{ enableHistograms && true };
+        constexpr static bool enablePointSizes { enableHistograms && true };
+        constexpr static bool enableCandidates { enableHistograms && true };
+        constexpr static bool enableNeighbors  { enableHistograms && true };
+
         Count batches{0};
         EdgeId edges{0};
         EdgeId compares{0};
 
-        Histogram activeSizes;
-        Histogram pointSizes;
+        Histogram<enableActiveSizes> activeSizes;
+        Histogram<enablePointSizes> pointSizes;
+        Histogram<enableCandidates> candidates;
+        Histogram<enableNeighbors> neighbors;
+
 
         Statistics operator+(const Statistics& o) const {
             Statistics s;
 
             s.batches    = batches    + o.batches;
             s.activeSizes= activeSizes+ o.activeSizes;
+            s.candidates = candidates + o.candidates;
             s.pointSizes = pointSizes + o.pointSizes;
+            s.neighbors  = neighbors  + o.neighbors;
             s.edges      = edges      + o.edges;
             s.compares   = compares   + o.compares;
 
@@ -274,7 +300,6 @@ public:
 
 private:
     // Geometry and Parameter
-    const bool _endgame;
     const Node _firstNode;
     const Count _numberOfNodes;
     const Geometry& _geometry;
@@ -314,8 +339,76 @@ private:
 #endif
     std::vector<Coord_m, Vc::Allocator<Coord_m> > _req_old;
 
+    template <bool Endgame>
+    unsigned int _AosToSoa(const Coord minThresh, const Coord maxThresh) {
+        if (_active.empty())
+            return 0;
 
-    unsigned int _AosToSoa(const Coord minThresh, const Coord maxThresh);
+        // transform AoS to SoA
+        if (_req_ids.size() < _active.size()) {
+            const size_t vectorSize = 2 * ((_active.size() + CoordPacking - 1) / CoordPacking);
+
+
+            _req_ids.resize(2 * _active.size());
+            _req_phi.resize(vectorSize);
+            _req_phi_start.resize(vectorSize);
+            _req_phi_stop.resize(vectorSize);
+            _req_cosh.resize(vectorSize);
+
+            #ifdef POINCARE
+            _req_poin_x.resize(vectorSize);
+            _req_poin_y.resize(vectorSize);
+            _req_poin_invr.resize(vectorSize);
+            #else
+            _req_invsinh  .resize(vectorSize);
+            #endif
+
+            if (Endgame)
+                _req_old.resize(vectorSize);
+        }
+
+        auto id_it = _req_ids.begin();
+
+        unsigned int i=0;
+        unsigned int j=0;
+
+        for(const Request& req : _active) {
+            if (req.range.second < minThresh || req.range.first > maxThresh)
+                continue;
+
+            *(id_it++) = req.id;
+            _req_phi[i][j] = req.phi;
+            _req_phi_start[i][j] = req.range.first;
+            _req_phi_stop[i][j] = req.range.second;
+#ifdef POINCARE
+            _req_poin_x[i][j]    = req.poinX;
+            _req_poin_y[i][j]    = req.poinY;
+            _req_poin_invr[i][j] = req.poinInvLen;
+#else
+            _req_invsinh[i][j] = req.r.invsinh;
+#endif
+            _req_cosh[i][j] = req.r.cosh;
+
+            if (Endgame) {
+                _req_old[i][j] = req.old();
+            }
+
+            if (++j == CoordPacking) {
+                j = 0;
+                i++;
+            }
+        }
+
+        if (j) {
+            for (; j < CoordPacking; ++j) {
+                _req_cosh[i][j] = std::numeric_limits<Coord>::max();
+            }
+            ++i;
+        }
+
+        return i;
+    }
+
     void _mergeInsertionBuffer(BandSegment& bandAbove);
     void _propagateRequests(const std::vector<Request>& reqs, BandSegment& bandAbove);
 

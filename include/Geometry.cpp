@@ -20,8 +20,7 @@ Coord Geometry::_computeTargetRadius(const Count n, const Coord avgDeg, const Co
         Coord secondSumTerm = exp(-alpha*R)*(alpha*(R/2)*((M_PI/4)*pow((1/alpha),2)-(M_PI-1)*(1/alpha)+(M_PI-2))-1);
         return (2.0 / M_PI) * xi * xi * n *(firstSumTerm + secondSumTerm);
     };
-        
-    
+
     assert(getExpectedDegree(lowerBound) > avgDeg);
     assert(getExpectedDegree(upperBound) < avgDeg);
     

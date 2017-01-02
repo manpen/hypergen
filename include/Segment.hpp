@@ -14,8 +14,7 @@ public:
     Segment(Node firstNode, Count nodes,
         CoordInter phiRange, const Geometry& geometry,
         const std::vector<Coord>& limits,
-        Seed seed,
-        bool endgame
+        Seed seed
     );
 
     BandSegment& getBand(unsigned int i) {
@@ -43,7 +42,7 @@ public:
     }
 
 
-    template<typename EdgeCallback, typename PointCallback>
+    template<bool Endgame, typename EdgeCallback, typename PointCallback>
     void advance(
         const unsigned int bandIdx,
         Coord threshold,
@@ -74,8 +73,11 @@ public:
                 band.generatePoints(getBandAbove(bandIdx));
 
                 // invoke point callback
-                for(const auto& pt : band.getPoints())
-                    pointCB(pt);
+                if (!Endgame) {
+                    for (const auto &pt : band.getPoints()) {
+                        pointCB(pt);
+                    }
+                }
             }
 
             if (band.getPoints().empty() || band.getPoints().front().phi > threshold) {
@@ -84,12 +86,12 @@ public:
             }
 
             if (!band.getPoints().empty()) {
-                band.generateEdges(edgeCB, getBandAbove(bandIdx), threshold);
+                band.generateEdges<Endgame, EdgeCallback>(edgeCB, getBandAbove(bandIdx), threshold);
             }
 
 
             if (bandIdx+1 < _bands.size()) {
-                advance(bandIdx+1, std::min(band.nextRequestLB(), threshold), finalize, edgeCB, pointCB);
+                advance<Endgame>(bandIdx+1, std::min(band.nextRequestLB(), threshold), finalize, edgeCB, pointCB);
             }
             
         } while(finalize ? !band.done(threshold) : !band.done());
@@ -98,7 +100,6 @@ public:
     const CoordInter& getPhiRange() const {return _phiRange;}
 
 private:
-    const bool _endgame;
     const Geometry _geometry;
     const CoordInter _phiRange;
 

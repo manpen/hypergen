@@ -2,15 +2,16 @@
 
 #include <random>
 #include <algorithm>
-#include <cassert>
+#include "Assert.hpp"
+
 #include "Summation.hpp"
 
 std::vector<Node> RandomHelper::sampleMultinomial(const Node n, const std::vector<Coord>& probs, DefaultPrng& rg) {
-    assert(!probs.empty());
+    ASSERT(!probs.empty());
     if (probs.size() == 1) return {n};
     std::vector<Node> result;
     
-    assert(std::abs( std::accumulate(probs.cbegin(), probs.cend(), 0.0) - 1.0 ) < std::numeric_limits<Coord>::epsilon());
+    ASSERT_LS(std::abs( std::accumulate(probs.cbegin(), probs.cend(), 0.0) - 1.0 ), 16 * std::numeric_limits<Coord>::epsilon());
     
     auto elems_left = n;
     double prob_mass = 1.0;
@@ -24,7 +25,7 @@ std::vector<Node> RandomHelper::sampleMultinomial(const Node n, const std::vecto
     }
     result.push_back(elems_left);
 
-    assert(n == std::accumulate(result.cbegin(), result.cend(), 0));
+    ASSERT_EQ(n, std::accumulate(result.cbegin(), result.cend(), 0));
     
     return result;
 }

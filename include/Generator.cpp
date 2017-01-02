@@ -10,7 +10,7 @@
 Generator::Generator(Count n, Coord avgDeg, Coord alpha, Seed seed, uint32_t worker)
     : _geometry(n, avgDeg, alpha)
     , _noNodes(n)
-    , _maxRepeatRange(2.0 * M_PI / 8 / worker)
+    , _maxRepeatRange(2.0 * M_PI / 4 / worker)
     , _bandLimits(_computeBandLimits())
     , _firstStreamingBand(_computeFirstStreamingBand(_maxRepeatRange))
 {
@@ -41,21 +41,19 @@ Generator::Generator(Count n, Coord avgDeg, Coord alpha, Seed seed, uint32_t wor
     for(unsigned int s=0; s<worker; ++s) {
         Seed seed = static_cast<Seed>(randgen());
 
-        _segments.emplace_back( new Segment {
+        _segments.push_back( std::make_unique<Segment>(
             n0, nodesPerSegment[s],
-            {s*segWidth, (1+s)*segWidth},
+            CoordInter{s*segWidth, (1+s)*segWidth},
             _geometry, _bandLimits,
-            seed,
-            false
-        });
+            seed
+        ));
 
-        _endgame_segments.emplace_back( new Segment {
+        _endgame_segments.push_back( std::make_unique<Segment>(
             n0, nodesPerSegment[s],
-            {s*segWidth, (1+s)*segWidth},
+            CoordInter{s*segWidth, (1+s)*segWidth},
             _geometry, _bandLimits,
-            seed,
-            true
-        });
+            seed
+        ));
 
         n0 += nodesPerSegment[s];
     }
@@ -229,12 +227,34 @@ void Generator::_prepareGlobalPoints() {
 
 
 std::vector<Coord> Generator::_computeBandLimits() const {
+#if 1
+    Coord seriesSpacing = std::log(3) /  (_geometry.alpha + 0.5);
+    const unsigned int len = std::ceil(_geometry.R / 2 / seriesSpacing);
+    seriesSpacing = _geometry.R / 2 / len;
+
+    std::cout << "Use " << len << " bands with a spacing of " << seriesSpacing << std::endl;
+
+
+    std::vector<Coord> bandRadius;
+    constexpr auto baseBands = 3;
+
+    bandRadius.reserve(baseBands + len + 1);
+
+    for(unsigned int k=0; k <= baseBands; k++)
+        bandRadius.push_back(_geometry.R / 2 / baseBands * k);
+
+    for(unsigned int k=1; k <= len; k++)
+        bandRadius.push_back(_geometry.R / 2 + seriesSpacing * k);
+
+    bandRadius.back() = _geometry.R;
+
+#else
     // based on NetworKIT
     std::vector<Coord> bandRadius;
     bandRadius.push_back(0.0);
 
     constexpr Coord seriesRatio = 0.91;
-    const uint32_t logn = std::ceil(std::log(_noNodes));
+    const uint32_t logn =  10+ceil(_geometry.R/2.7182); // ;10; //std::min<unsigned int>(10u, std::ceil(std::log(_noNodes)));
     const Coord a = _geometry.R * (1.0-seriesRatio) / (1.0 - std::pow(seriesRatio, logn));
 
     for (uint32_t i = 1; i < logn; i++) {
@@ -243,6 +263,8 @@ std::vector<Coord> Generator::_computeBandLimits() const {
     }
     
     bandRadius.push_back(_geometry.R);
+#endif
+
     return bandRadius;
 }
 
@@ -276,8 +298,7 @@ void Generator::_reportEndStats() const {
     << std::endl;
 
     BandSegment::Statistics tot_stats;
-    std::vector<Histogram> activeSizes;
-    std::vector<Histogram> pointSizes;
+    std::vector<BandSegment::Statistics> bandwiseStats;
 
     for(unsigned int b=0; b < _bandLimits.size() - 1; ++b) {
         const BandSegment::Statistics stats =
@@ -299,8 +320,7 @@ void Generator::_reportEndStats() const {
                 << " " << std::setw(12) << std::right << (static_cast<double>(eg_stats.compares) / eg_stats.edges)
         << std::endl;
 
-        activeSizes.push_back(stats.activeSizes + eg_stats.activeSizes);
-        pointSizes.push_back(stats.pointSizes + eg_stats.pointSizes);
+        bandwiseStats.push_back(stats);
     }
 
     std::cout <<
@@ -310,21 +330,18 @@ void Generator::_reportEndStats() const {
         "Average Degree:     " << std::setw(12) << std::right << (2.0 * tot_stats.edges / _noNodes)
     << std::endl;
 
-#ifdef HISTOGRAM_ENABLE
-    for(unsigned int b=0; b < activeSizes.size(); ++b) {
-        std::cout << "Active size in band " << b << "\n";
-        activeSizes[b].toStream(std::cout, "ACT-SZE-" + std::to_string(b));
-        std::cout << std::endl;
+// Dump Histograms
+    for(unsigned int b=0; b < bandwiseStats.size(); ++b) {
+        bandwiseStats[b].activeSizes.toStream(std::cout, "HIST-ACT-" + std::to_string(b));
+        bandwiseStats[b].candidates.toStream(std::cout, "HIST-CND-" + std::to_string(b));
+        bandwiseStats[b].pointSizes.toStream(std::cout, "HIST-PTS-" + std::to_string(b));
+        bandwiseStats[b].neighbors.toStream(std::cout, "HIST-NBR-" + std::to_string(b));
     }
 
-    std::cout << "Total points size:\n";
-    tot_stats.pointSizes.toStream(std::cout, "TOT-PTS-SZE");
-    std::cout << std::endl;
-
-    std::cout << "Total active size:\n";
-    tot_stats.activeSizes.toStream(std::cout, "TOT-ACT-SZE");
-    std::cout << std::endl;
-#endif
+    tot_stats.activeSizes.toStream(std::cout, "HIST-TOT-ACT");
+    tot_stats.candidates.toStream(std::cout, "HIST-TOT-CND");
+    tot_stats.pointSizes.toStream(std::cout, "HIST-TOT-PTS");
+    tot_stats.neighbors.toStream(std::cout, "HIST-TOT-NBR");
 }
 
 void Generator::_dumpAllPointsAndRequests(const std::vector<std::unique_ptr<Segment>>& segments, const std::string key) const {

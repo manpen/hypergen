@@ -41,11 +41,14 @@ public:
             // handle their edges
             for(unsigned int s=0; s < _segments.size(); ++s) { // TODO: in parallel?
                 for(unsigned int b=0; b < _firstStreamingBand; ++b) {
-                    _segments[s]->getBand(b).generateEdges(
-                        [&] (const Edge& e) {edgeCB(e, s);},
-                        _segments[s]->getBand(b)    // Pass band itself in order to prevent propagation (which happened earlier)
-                    );
-                    _segments[s]->getBand(b).getRequests().clear();
+                    auto& band =_segments[s]->getBand(b);
+
+                    if (!band.getPoints().empty())
+                        band.generateEdges<false>(
+                            [&] (const Edge& e) {edgeCB(e, s);},
+                            _segments[s]->getBand(b)    // Pass band itself in order to prevent propagation (which happened earlier)
+                        );
+                    band.getRequests().clear();
                 }
             }
         }
@@ -59,59 +62,66 @@ public:
 
         {
             ScopedTimer timer("Main task");
-            omp_set_num_threads(_segments.size());
+//            omp_set_num_threads(_segments.size());
 
-            #pragma omp parallel for
-            for (unsigned int s = 0; s < _segments.size(); ++s) {
-                auto &segment = *_segments[s];
-                auto &firstBand = segment.getBand(_firstStreamingBand);
+            #pragma omp parallel
+            {
+                #pragma omp for
+                for (unsigned int s = 0; s < _segments.size(); ++s) {
+                    auto &segment = *_segments[s];
+                    auto &firstBand = segment.getBand(_firstStreamingBand);
 
-                // the main job: recursively merge all bands
-                {
-                    bool finalize = true;
-                    do {
-                        finalize = !finalize;
-                        segment.advance(
-                                _firstStreamingBand,
-                                firstBand.getPhiRange().second,
-                                finalize,
-                                [&](const Edge &e) { edgeCB(e, s); },
-                                [&](const Point &p) { pointCB(p, s); }
-                        );
-                    } while (!finalize);
+                    // the main job: recursively merge all bands
+                    {
+                        bool finalize = true;
+                        do {
+                            finalize = !finalize;
+                            segment.advance<false>(
+                                    _firstStreamingBand,
+                                    firstBand.getPhiRange().second,
+                                    finalize,
+                                    [&](const Edge &e) { edgeCB(e, s); },
+                                    [&](const Point &p) { pointCB(p, s); }
+                            );
+                        } while (!finalize);
+                    }
                 }
 
-                // prepare endgame
-                const auto endgameSeg = (s + 1) % _segments.size();
+                #pragma omp for
+                for (unsigned int oldSeg = 0; oldSeg < _segments.size(); ++oldSeg) {
+                    // prepare endgame
+                    const auto endgameSeg = (oldSeg + 1) % _segments.size();
 
-                for (unsigned int b = _firstStreamingBand; b < noBands; ++b) {
-                    auto &oldBand = _segments[s]->getBand(b);
-                    auto &endgameBand = _endgame_segments[endgameSeg]->getBand(b);
+                    for (unsigned int b = _firstStreamingBand; b < noBands; ++b) {
+                        const auto &oldBand = _segments.at(oldSeg)->getBand(b);
+                        auto &endgameBand = _endgame_segments.at(endgameSeg)->getBand(b);
 
-                    const Coord maxPhi = endgameBand.prepareEndgame(oldBand);
-                    if (maxPhi > maxPhis[endgameSeg])
-                        maxPhis[endgameSeg] = maxPhi;
+                        const Coord maxPhi = endgameBand.prepareEndgame(oldBand);
+                        if (maxPhi > maxPhis[endgameSeg])
+                            maxPhis[endgameSeg] = maxPhi;
 
-                }
+                    }
 
-                if (_stats)
-                    std::cout << "maxPhi: " << (maxPhis[endgameSeg] - _endgame_segments[endgameSeg]->getPhiRange().first) << ", conservative: " <<  + _maxRepeatRange << std::endl;
+                    if (0 && _stats) {
+                        std::cout << "maxPhi: " << (maxPhis[endgameSeg] - _endgame_segments[endgameSeg]->getPhiRange().first)
+                                  << ", conservative: " << +_maxRepeatRange << std::endl;
+                    }
 
+                    // execute endgame
+                    {
+                        bool finalize = true;
 
-                // execute endgame
-                {
-                    bool finalize = true;
-
-                    do {
-                        finalize = !finalize;
-                        _endgame_segments[s]->advance(
-                                _firstStreamingBand,
-                                maxPhis[s], //firstBand.getPhiRange().first + _maxRepeatRange,
-                                finalize,
-                                [&] (const Edge& e) {edgeCB(e, s);},
-                                [&] (const Point& p) {pointCB(p, s);}
-                        );
-                    } while(!finalize);
+                        do {
+                            finalize = !finalize;
+                            _endgame_segments[endgameSeg]->advance<true>(
+                                    _firstStreamingBand,
+                                    maxPhis[endgameSeg],
+                                    finalize,
+                                    [&](const Edge &e) { edgeCB(e, endgameSeg); },
+                                    [&](const Point &p) { pointCB(p, endgameSeg); }
+                            );
+                        } while (!finalize);
+                    }
                 }
             }
         }

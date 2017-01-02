@@ -4,8 +4,9 @@
 #include "include/Generator.hpp"
 
 #ifndef NDEBUG
-//#define CROSS_REFERENCE
+#define CROSS_REFERENCE
 #endif
+//#define COUNT_NEIGHBORS
 
 #include <iostream>
 #ifdef CROSS_REFERENCE
@@ -13,6 +14,7 @@
     #include <NetworKit/auxiliary/Timer.h>
     #include <NetworKit/graph/GraphBuilder.h>
     #include <NetworKit/auxiliary/Parallel.h>
+    #include "include/Histogram.hpp"
 #endif
 
 #include <cmath>
@@ -28,6 +30,7 @@ int main(int argc, char* argv[]) {
     double confAvgDeg = 5;
     double confExp = 3;
     Seed confSeed = 1234;
+    bool confReportMismatches = true;
 
     for(unsigned int i=1; i+1 < argc; i+=2) {
         std::string key = argv[i];
@@ -38,6 +41,9 @@ int main(int argc, char* argv[]) {
         else if (key == "-e") {confExp = stod(value);}
         else if (key == "-s") {confSeed = stoi(value);}
         else if (key == "-w") {noWorker = stoi(value);}
+#ifdef CROSS_REFERENCE
+        else if (key == "-r") {confReportMismatches = stoi(value);}
+#endif
         else {
             std::cerr << "Unknown argument: " << key << std::endl;
             abort();
@@ -52,7 +58,10 @@ int main(int argc, char* argv[]) {
               "-e Exponent    " << confExp << "\n"
               "   Alpha       " << confAlpha << "\n"
               "-w No. Worker  " << noWorker << "\n"
-              "-s Seed        " << confSeed
+              "-s Seed        " << confSeed << "\n"
+#ifdef CROSS_REFERENCE
+              << "reportMismatch " << confReportMismatches << "\n"
+#endif
     << std::endl;
 
     const auto threadsBefore = omp_get_max_threads();
@@ -76,6 +85,10 @@ int main(int argc, char* argv[]) {
     std::vector<std::vector<Edge>> edges(noWorker);
     std::vector<Node> nodeAccum(noWorker*8);
 
+#ifdef COUNT_NEIGHBORS
+    std::vector<Node> neighborhood(confNoPoints, 0);
+#endif
+
     Generator gen(confNoPoints, confAvgDeg, confAlpha, confSeed, noWorker);
     {
         ScopedTimer timer("Generator time");
@@ -88,8 +101,14 @@ int main(int argc, char* argv[]) {
         };
 
         auto addEdge = [&](Edge e, unsigned int segmentId) {
+#ifdef COUNT_NEIGHBORS
+            neighborhood[e.first]++;
+#endif
+
 #ifdef CROSS_REFERENCE
             edgeCounters.at(segmentId)++;
+
+            neighborhood[e.first]++;
 
             if (e.first > e.second) {
                 std::swap(e.first, e.second);
@@ -117,6 +136,16 @@ int main(int argc, char* argv[]) {
     }
 #endif
 
+
+#ifdef COUNT_NEIGHBORS
+    {
+        Histogram<true> hist;
+        for (const auto &d : neighborhood)
+            hist.addPoint(d);
+        hist.toStream(std::cout, "NBR-DIST-EXT");
+    }
+#endif
+
 #ifndef CROSS_REFERENCE
     std::cout << "Accum key is " << std::accumulate(nodeAccum.cbegin(), nodeAccum.cend(), 0) << std::endl;
 #endif
@@ -133,6 +162,21 @@ int main(int argc, char* argv[]) {
         __gnu_parallel::sort(myEdges.begin(), myEdges.end());
     }
 
+    // compute degree distribution
+    {
+        std::vector<Node> degrees(confNoPoints, 0);
+        for (const auto &e : myEdges) {
+            degrees.at(e.first)++;
+            degrees.at(e.second)++;
+        }
+
+        Histogram<true> hist;
+        for (const auto &d : degrees)
+            hist.addPoint(d);
+        hist.toStream(std::cout, "DEG-DIST");
+    }
+
+
 // compare with networkit
     std::vector<Edge> nkEdges;
     {
@@ -146,8 +190,8 @@ int main(int argc, char* argv[]) {
             angles.push_back(fmod(pt.phi, 2*M_PI));
             rads.push_back(std::acosh(pt.r.cosh));
         }
-        
-        NetworKit::HyperbolicGenerator nkGen(confNoPoints, confAvgDeg, confAlpha, 0.0);
+
+        NetworKit::HyperbolicGenerator nkGen(confNoPoints, confAvgDeg, confExp, 0.0);
         auto graph = nkGen.generateColdOrig(angles, rads, gen.getGeometry().R);
 
         for(auto e : graph.edges()) {
@@ -174,7 +218,7 @@ int main(int argc, char* argv[]) {
             const bool ndone = (ni == nkEdges.cend());
 
             auto print = [&] (bool my, bool nk) {
-                if (my != nk) {
+                if (confReportMismatches && my != nk) {
                     Edge e = my ? *mi : *ni;
                     std::cout << "["
                               << std::setw(10) << std::right << e.first << ", "
@@ -186,16 +230,16 @@ int main(int argc, char* argv[]) {
 
                 if (nk) ni++;
                 if (my) mi++;
-           };
+            };
 
             if (mdone || (!ndone && *ni < *mi)){
                 print(false, true);
                 missing++;
             } else if (ndone || *mi < *ni) {
-                print(true, false);
-                wrong++;
                 if (mi != myEdges.cbegin()) {
                     const Edge& e = *(mi - 1);
+
+                    if (confReportMismatches)
                     std::cout << " Before " << e.first << ", " << e.second << "\n "
                               << points[e.first] << "\n "
                               << points[e.second] << ", "
@@ -206,6 +250,8 @@ int main(int argc, char* argv[]) {
                               << std::endl;
 
                     repeats += (e == *mi);
+                    print(true, false);
+                    wrong++;
                 }
             } else {
                 assert(!mdone && !ndone && *mi == *ni);
@@ -217,6 +263,7 @@ int main(int argc, char* argv[]) {
         std::cout << "Edges produced\n"
             " My: " << myEdges.size() << "\n"
             " Nk: " << nkEdges.size() << "\n"
+            " Ex: " << static_cast<EdgeId>(confAvgDeg*confNoPoints/2) << "\n"
             " Matches: " << matches << "\n"
             " Missing: " << missing << "\n"
             " Wrong:   " << wrong << "\n"
