@@ -87,6 +87,8 @@ public:
                     }
                 }
 
+                _dumpAllPointsAndRequests(_segments, "e");
+
                 #pragma omp for
                 for (unsigned int oldSeg = 0; oldSeg < _segments.size(); ++oldSeg) {
                     // prepare endgame

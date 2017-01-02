@@ -12,6 +12,10 @@
 
 #define POINCARE
 
+#ifndef NDEBUG
+#define CROSS_REFERENCE
+#endif
+
 using Coord = double;
 using Node = unsigned long int;
 
@@ -39,10 +43,16 @@ using CoordInter = Interval<Coord>;
 struct SinhCosh {
     Coord invsinh;
     Coord cosh;
+#ifdef CROSS_REFERENCE
+    Coord r;
+#endif
 
     SinhCosh() {}
 
     SinhCosh(const Coord r)
+#ifdef CROSS_REFERENCE
+        : r(r)
+#endif
     {
         const Coord e  = std::exp(r);
         const Coord ie = 1.0 / e;

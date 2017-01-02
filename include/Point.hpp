@@ -4,6 +4,7 @@
 
 #include "Definitions.hpp"
 #include "Geometry.hpp"
+#include "Assert.hpp"
 #include <iostream>
 
 struct Point {
@@ -12,7 +13,7 @@ struct Point {
     SinhCosh r;
 
 #ifdef POINCARE
-    Coord poinR;
+//    Coord poinR;
     Coord poinX;
     Coord poinY;
     Coord poinInvLen;
@@ -25,13 +26,20 @@ struct Point {
 
     Point(const Node id, const Coord phi, const SinhCosh r)
             : id(id), phi(phi), r(r)
+    {
 #ifdef POINCARE
-            , poinR(std::sqrt( (r.cosh - 1.0) / (r.cosh + 1.0) ))
-            , poinX(poinR * std::sin(phi))
-            , poinY(poinR * std::cos(phi))
-            , poinInvLen(1.0 / (1.0 - poinR * poinR))
+        const Coord poinRR = (r.cosh - 1.0) / (r.cosh + 1.0);
+        const Coord poinR = (std::sqrt( poinRR ));
+
+        ASSERT_LS(poinR, 1.0);
+        ASSERT_LS(poinRR, 1.0);
+
+        poinX = (poinR * std::sin(phi));
+        poinY = (poinR * std::cos(phi));
+
+        poinInvLen = (1.0 / (1.0 - poinRR));
 #endif
-    {}
+    }
 
     void setOld() {
         _old = true;
@@ -46,16 +54,33 @@ struct Point {
     }
 
     friend std::ostream& operator <<(std::ostream& stream, const Point& o) {
-        return stream << "Point(id:" << o.id << ", phi: " << o.phi << ", r: " << std::acosh(o.r.cosh) << ", old:" << o.old() << ")";
+        return stream << "Point(id:" << o.id << ", "
+                "phi: " << o.phi << ", "
+                "r: " << std::acosh(o.r.cosh) << ", "
+#ifdef CROSS_REFERENCE
+                "r.r: " << o.r.r << ", "
+#endif
+                "old:" << o.old() << ")";
     }
 
     Coord distanceToHyper(const Point& o) const {
-        return std::acosh(r.cosh * o.r.cosh - cos(o.phi - phi) / r.invsinh / o.r.invsinh);
+        return std::acosh(coshDistanceToHyper(o));
     }
+
+    Coord coshDistanceToHyper(const Point& o) const {
+        return r.cosh * o.r.cosh - std::cos(o.phi - phi) / r.invsinh / o.r.invsinh;
+    }
+
 
 #ifdef POINCARE
     Coord distanceToPoincare(const Point& o) const {
-        return std::acosh(1.0 + 2.0*(poinX*o.poinX + poinY*o.poinY) * poinInvLen * o.poinInvLen);
+        return std::acosh(coshDistanceToPoincare(o));
+    }
+
+    Coord coshDistanceToPoincare(const Point& o) const {
+        const auto diffX = poinX - o.poinX;
+        const auto diffY = poinY - o.poinY;
+        return 1.0 + 2.0*(diffX*diffX + diffY*diffY) * poinInvLen * o.poinInvLen;
     }
 
     Coord distanceTo(const Point& o) const {
@@ -94,11 +119,18 @@ struct Request : public Point {
     }
 
     friend std::ostream& operator <<(std::ostream& stream, const Request& o) {
-        return stream << "Request(id:" << o.id << ", phi: " << o.phi << ", range: [" << o.range.first << ", " << o.range.second << "], r: " << std::acosh(o.r.cosh) << ", old:" << o.old() << ")";
+        return stream << "Request(id:" << o.id << ", "
+                         "phi: " << o.phi << ", "
+                         "range: [" << o.range.first << ", " << o.range.second << "], "
+                         "r: " << std::acosh(o.r.cosh) << ", "
+#ifdef CROSS_REFERENCE
+                         "r.r: " << o.r.r << ", "
+#endif
+                         "old:" << o.old() << ")";
     }
 
     static Request faraway() {
-        return {0, 0.0, {0.0, 0.0}, 1e10};
+        return {0, 0.0, {0.0, 0.0}, std::numeric_limits<Coord>::max()};
     }
 };
 

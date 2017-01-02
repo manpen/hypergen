@@ -27,6 +27,9 @@ public:
     
     template <bool Endgame, typename EdgeCallback>
     void generateEdges(EdgeCallback edgeCallback, BandSegment& bandAbove, Coord threshold = 2*M_PI) {
+        _checkInvariants();
+        _mergeInsertionBuffer(bandAbove);
+
         if (_stats) {
             _stats_data.activeSizes.addPoint( _active.size() );
         }
@@ -45,16 +48,11 @@ public:
                 std::cout << " InB: " << r << "\n";
         }
 
-        //if (threshold < 0)
-        //
-        const Coord bandThreshold = _generator.nodesLeft() ? (_generator.nextRequestLB() - _geometry.deltaPhi(_radRange.first, _radRange.first)) : _phiRange.second;
+        const Coord bandThreshold = _generator.nodesLeft()
+            ? (_generator.nextRequestLB() - _geometry.deltaPhi(_radRange.first, _radRange.first))
+            : _phiRange.second;
         threshold = std::min(threshold, bandThreshold);
 
-        if (_verbose)
-            std::cout << "  Threshold: " << threshold << std::endl;
-
-        _checkInvariants();
-        _mergeInsertionBuffer(bandAbove);
         const auto upper = _AosToSoa<Endgame>(_points.front().phi, _points.back().phi);
 
         if (!upper) {
@@ -128,6 +126,10 @@ public:
 
             noCandidates = this_upper * _req_phi[0].size();
 
+#ifndef NDEBUG
+            auto active_iter = _active.cbegin();
+#endif
+
             for(unsigned int i = 0; i < this_upper; ++i) {
                 auto ptIsSmaller = (_req_phi_stop[i] > ptphi) && (_req_phi_start[i] <= ptphi);
                 if (ptIsSmaller.isEmpty()) {
@@ -147,7 +149,7 @@ public:
                 const auto deltaX = _req_poin_x[i] - poinX;
                 const auto deltaY = _req_poin_y[i] - poinY;
 
-                const auto dist = ((deltaX*deltaX + deltaY*deltaY) * poinInvR * _req_poin_invr[i]);
+                const auto dist = (deltaX*deltaX + deltaY*deltaY) * poinInvR * _req_poin_invr[i];
 
                 const auto isEdge = ptIsSmaller && (dist < threshR);
 #else
@@ -161,6 +163,25 @@ public:
                     const auto & neighbor = _req_ids[i*CoordPacking + j];
 
                     if (isEdge[j] && pt.id != neighbor) {
+#ifndef NDEBUG
+                        while(active_iter->id != neighbor)
+                            ++active_iter;
+
+                        if (_debugSuperParanoid && (pt.coshDistanceToPoincare(*active_iter) > _geometry.coshR)) {
+                            std::cerr << "pt:     " << pt << "\n"
+                                         "req:    " << *active_iter << "\n"
+                                         "req_ps: " << _req_phi_start[i][j] << "\n"
+                                         "poi:    " << pt.coshDistanceToPoincare(*active_iter) << "\n"
+                                         "hyp:    " << pt.coshDistanceToHyper(*active_iter) << "\n"
+                                         "coshR:  " << _geometry.coshR << "\n"
+                                         "j:      " << j << "\n"
+                                         "dist:   " << dist << "\n"
+                                         "thresh: " << threshR << "\n" <<
+                            std::endl;
+                            abort();
+                        }
+#endif
+
                         edgeCallback({pt.id, neighbor});
                         _stats_data.edges++;
                         noNeighbors += Statistics::enableNeighbors;
@@ -178,12 +199,19 @@ public:
 
         // remove completed requests
         {
-            const auto thresh = std::min<Coord>(_phiRange.second,
-                        (p == _points.cend()) ? _generator.nextPointLB() : p->phi);
+            auto thresh = std::min(_phiRange.second, _generator.nextPointLB());
+
+            if (p == _points.end() && thresh > _points.back().phi)
+                thresh = _points.back().phi;
+
+            if (p != _points.end() && thresh > p->phi)
+                thresh = p->phi;
+
             if (_verbose) {
                 std::cout << "Clean up with thresh = " << thresh << std::endl;
             }
-            const auto end =  std::remove_if(_active.begin(), _active.end(), [&] (const Request& a) {return a.range.second < thresh;});
+            const auto end = std::remove_if(_active.begin(), _active.end(),
+                                            [&] (const Request& a) {return a.range.second < thresh;});
             _active.erase(end, _active.end());
         }
 
@@ -312,6 +340,13 @@ private:
     // Statistics
     static constexpr bool _verbose{false};
     static constexpr bool _stats{true};
+    static constexpr bool _debugSuperParanoid {
+#ifndef NDEBUG
+        true
+#else
+        false
+#endif
+    };
     Statistics _stats_data;
 
     // Generator and AoS data
@@ -349,7 +384,7 @@ private:
             const size_t vectorSize = 2 * ((_active.size() + CoordPacking - 1) / CoordPacking);
 
 
-            _req_ids.resize(2 * _active.size());
+            _req_ids.resize(vectorSize * CoordPacking);
             _req_phi.resize(vectorSize);
             _req_phi_start.resize(vectorSize);
             _req_phi_stop.resize(vectorSize);
@@ -402,6 +437,7 @@ private:
         if (j) {
             for (; j < CoordPacking; ++j) {
                 _req_cosh[i][j] = std::numeric_limits<Coord>::max();
+                *(id_it++) = std::numeric_limits<Node>::max();
             }
             ++i;
         }

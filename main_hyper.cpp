@@ -1,12 +1,9 @@
 #include <iostream>
 #include <omp.h>
 
+//#define COUNT_NEIGHBORS
 #include "include/Generator.hpp"
 
-#ifndef NDEBUG
-#define CROSS_REFERENCE
-#endif
-//#define COUNT_NEIGHBORS
 
 #include <iostream>
 #ifdef CROSS_REFERENCE
@@ -108,8 +105,6 @@ int main(int argc, char* argv[]) {
 #ifdef CROSS_REFERENCE
             edgeCounters.at(segmentId)++;
 
-            neighborhood[e.first]++;
-
             if (e.first > e.second) {
                 std::swap(e.first, e.second);
             }
@@ -162,8 +157,9 @@ int main(int argc, char* argv[]) {
         __gnu_parallel::sort(myEdges.begin(), myEdges.end());
     }
 
+
     // compute degree distribution
-    {
+    if (0) {
         std::vector<Node> degrees(confNoPoints, 0);
         for (const auto &e : myEdges) {
             degrees.at(e.first)++;
@@ -188,10 +184,11 @@ int main(int argc, char* argv[]) {
         
         for(const Point& pt : points) {
             angles.push_back(fmod(pt.phi, 2*M_PI));
-            rads.push_back(std::acosh(pt.r.cosh));
+            rads.push_back(pt.r.r);
         }
 
         NetworKit::HyperbolicGenerator nkGen(confNoPoints, confAvgDeg, confExp, 0.0);
+        nkGen.R = gen.getGeometry().R;
         auto graph = nkGen.generateColdOrig(angles, rads, gen.getGeometry().R);
 
         for(auto e : graph.edges()) {
@@ -205,19 +202,35 @@ int main(int argc, char* argv[]) {
     }
 
 // print edges
+    // detect duplicates
+    {
+        auto mb = myEdges.cbegin();
+        auto mn = mb + 1;
+
+        Count duplicates = 0;
+        for(; mn != myEdges.cend(); ++mb, ++mn)
+            duplicates += (*mb == *mn);
+
+        std::cout << "Duplicates: " << duplicates << std::endl;
+    }
+
+
     {
         auto mi = myEdges.cbegin();
         auto ni = nkEdges.cbegin();
         EdgeId matches = 0;
         EdgeId missing = 0;
+        EdgeId missing_num = 0;
         EdgeId wrong  = 0;
-        EdgeId repeats = 0;
+        EdgeId wrong_num = 0;
 
         while(mi != myEdges.cend() || ni != nkEdges.cend()) {
             const bool mdone = (mi == myEdges.cend());
             const bool ndone = (ni == nkEdges.cend());
 
             auto print = [&] (bool my, bool nk) {
+                bool numerical_issue = false;
+
                 if (confReportMismatches && my != nk) {
                     Edge e = my ? *mi : *ni;
                     std::cout << "["
@@ -228,29 +241,33 @@ int main(int argc, char* argv[]) {
                               << "\n";
                 }
 
+                if (!my || !nk) {
+                    const Edge e = my ? *mi : *ni;
+                    numerical_issue = (std::abs(points[e.first].coshDistanceToPoincare(points[e.second]) - gen.getGeometry().coshR) /  gen.getGeometry().coshR < 1e-2);
+
+                    if (confReportMismatches && !numerical_issue)
+                        std::cout << " Before " << e.first << ", " << e.second << "\n "
+                                  << points[e.first] << "\n "
+                                  << points[e.second] << ", "
+                                  << "distance(P): " << std::setw(10) << points[e.first].distanceToPoincare(points[e.second]) << ", "
+                                  << "distance(H): " << std::setw(10) << points[e.first].distanceToHyper(points[e.second]) << ", "
+                                  << "R: " << std::setw(10) <<  gen.getGeometry().R
+                                  << std::endl;
+                }
+
+
                 if (nk) ni++;
                 if (my) mi++;
+
+                return numerical_issue;
             };
 
             if (mdone || (!ndone && *ni < *mi)){
-                print(false, true);
+                missing_num += print(false, true);
                 missing++;
             } else if (ndone || *mi < *ni) {
                 if (mi != myEdges.cbegin()) {
-                    const Edge& e = *(mi - 1);
-
-                    if (confReportMismatches)
-                    std::cout << " Before " << e.first << ", " << e.second << "\n "
-                              << points[e.first] << "\n "
-                              << points[e.second] << ", "
-                              << "distance: " << std::setw(20) << points[e.first].distanceTo(points[e.second]) << ", "
-                              << "distance(H): " << std::setw(20) << points[e.first].distanceToHyper(points[e.second]) << ", "
-
-                              << "R: " << std::setw(20) <<  gen.getGeometry().R
-                              << std::endl;
-
-                    repeats += (e == *mi);
-                    print(true, false);
+                    wrong_num += print(true, false);
                     wrong++;
                 }
             } else {
@@ -264,13 +281,15 @@ int main(int argc, char* argv[]) {
             " My: " << myEdges.size() << "\n"
             " Nk: " << nkEdges.size() << "\n"
             " Ex: " << static_cast<EdgeId>(confAvgDeg*confNoPoints/2) << "\n"
-            " Matches: " << matches << "\n"
-            " Missing: " << missing << "\n"
+            " Matches:    " << matches << "\n"
+            " Missing:    " << missing << "\n"
+            " Missing(n): " << missing_num << "\n"
             " Wrong:   " << wrong << "\n"
-            " Repeat:  " << repeats
+            " Wrong(n):   " << wrong_num << "\n"
         << std::endl;
     }
 #endif
 
     return 0;
 }
+

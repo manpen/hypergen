@@ -106,6 +106,8 @@ Coord BandSegment::prepareEndgame(const BandSegment& band) {
     Coord maxPhi = _phiRange.first;
     ASSERT(_insertion_buffer.empty());
 
+    _checkInvariants();
+
 // copy points
     //assert(_points.empty());
     for(auto pt : band.getPoints()) {
@@ -117,6 +119,9 @@ Coord BandSegment::prepareEndgame(const BandSegment& band) {
         _points.push_back(pt);
         _points.back().setOld();
 
+        ASSERT_GE(pt.phi, _phiRange.first);
+        ASSERT_LE(pt.phi, _phiRange.second);
+
         if (pt.phi > maxPhi)
             maxPhi = pt.phi;
     }
@@ -125,10 +130,13 @@ Coord BandSegment::prepareEndgame(const BandSegment& band) {
 // copy requests
     auto extractRequests = [&] (const std::vector<Request>& reqs) {
         std::vector<Request> newReqs;
+        bool fixed = false;
+
         for(auto req : reqs) {
-            if (req.range.second >= 2*M_PI) {
+            if (req.range.second >= _phiRange.second) {
                 req.range.first = 0;
                 req.range.second -= 2*M_PI;
+                fixed = true;
 
                 ASSERT_EQ(_phiRange.first, 0.0);
             }
@@ -145,12 +153,18 @@ Coord BandSegment::prepareEndgame(const BandSegment& band) {
                 maxPhi = req.range.second;
         }
 
+        if (unlikely(fixed)) {
+            std::sort(newReqs.begin(), newReqs.end());
+        }
+
         return newReqs;
     };
 
     merge_vectors(_active, extractRequests(band.getRequests()), _merge_helper);
     if (!band.getInsertionBuffer().empty())
         merge_vectors(_insertion_buffer, extractRequests(band.getInsertionBuffer()), _merge_helper);
+
+    _checkInvariants();
 
     return maxPhi;
 }

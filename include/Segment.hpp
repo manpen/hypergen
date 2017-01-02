@@ -66,7 +66,6 @@ public:
                 abort();
             }
 
-
             // Generate points. This is necessary, if the last time
             // we went outside of our allowance
             if (1) {
@@ -85,15 +84,14 @@ public:
                     break;
             }
 
-            if (!band.getPoints().empty()) {
-                band.generateEdges<Endgame, EdgeCallback>(edgeCB, getBandAbove(bandIdx), threshold);
-            }
-
+            // call even if there are no points, because there could be pending requests in the inbuf
+            // that need to be propagated
+            band.generateEdges<Endgame, EdgeCallback>(edgeCB, getBandAbove(bandIdx), threshold);
 
             if (bandIdx+1 < _bands.size()) {
                 advance<Endgame>(bandIdx+1, std::min(band.nextRequestLB(), threshold), finalize, edgeCB, pointCB);
             }
-            
+
         } while(finalize ? !band.done(threshold) : !band.done());
     }
 

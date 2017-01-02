@@ -13,10 +13,10 @@ include_directories(${Vc_INCLUDE_DIR})
 link_directories("${Vc_INCLUDE_DIR}/../lib/")
 
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++14 -fopenmp -g -march=native")
-set(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS} -fsanitize=address -fno-omit-frame-pointer -O3")
+set(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS} -fsanitize=address -fno-omit-frame-pointer -O0")
 
 if (${CMAKE_COMPILER_IS_GNUCXX})
-    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -O3 -ffast-math")
+    set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS} -O3 -ffast-math -DNDEBUG")
 elseif("${CMAKE_CXX_COMPILER_ID}" STREQUAL "Intel")
     # enable -xHOST -O3 -ipo -no-prec-div -static -fp-model fast=2
     set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -xHOST -O3 -ipo -no-prec-div -fp-model fast=2 -march=core-avx2 -fno-alias ")
