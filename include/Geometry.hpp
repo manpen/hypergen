@@ -27,8 +27,8 @@ struct Geometry {
         , poincareR(coshR * 0.5 - 0.5)
     {}    
     
-    Geometry(Count nodes, Coord avgDeg, Coord alpha)
-        : Geometry(alpha, avgDeg, _computeTargetRadius(nodes, avgDeg, alpha))
+    Geometry(Count nodes, Coord avgDeg, Coord alpha, Coord R = -1)
+        : Geometry(alpha, avgDeg, R > 0 ? R : _computeTargetRadius(nodes, avgDeg, alpha))
     {}
     
     Coord radDensity(Coord r) const {
@@ -50,7 +50,16 @@ struct Geometry {
     
         return std::acos(deltaPhiCos);
     }
-    
+
+    static Coord getExpectedDegree(Coord R, Coord alpha, Node nodes = 1) {
+        const Coord gamma = 2*alpha+1;
+        const Coord xi = (gamma-1)/(gamma-2);
+
+        Coord firstSumTerm = exp(-R/2);
+        Coord secondSumTerm = exp(-alpha*R)*(alpha*(R/2)*((M_PI/4)*pow((1/alpha),2)-(M_PI-1)*(1/alpha)+(M_PI-2))-1);
+
+        return (2.0 / M_PI) * xi * xi *(firstSumTerm + secondSumTerm) * nodes;
+    };
     
 private: 
     Coord _computeTargetRadius(Count nodes, Coord avgDeg, Coord alpha) const;

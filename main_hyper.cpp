@@ -3,6 +3,7 @@
 
 //#define COUNT_NEIGHBORS
 #include "include/Generator.hpp"
+#include "include/Configuration.hpp"
 
 
 #include <iostream>
@@ -21,45 +22,7 @@
 
 
 int main(int argc, char* argv[]) {
-    unsigned int noWorker = omp_get_max_threads();
-    
-    unsigned int confNoPoints = 1000;
-    double confAvgDeg = 5;
-    double confExp = 3;
-    Seed confSeed = 1234;
-    bool confReportMismatches = true;
-
-    for(unsigned int i=1; i+1 < argc; i+=2) {
-        std::string key = argv[i];
-        std::string value = argv[i+1];
-
-        if      (key == "-n") {confNoPoints = stoll(value);}
-        else if (key == "-d") {confAvgDeg = stod(value);}
-        else if (key == "-e") {confExp = stod(value);}
-        else if (key == "-s") {confSeed = stoi(value);}
-        else if (key == "-w") {noWorker = stoi(value);}
-#ifdef CROSS_REFERENCE
-        else if (key == "-r") {confReportMismatches = stoi(value);}
-#endif
-        else {
-            std::cerr << "Unknown argument: " << key << std::endl;
-            abort();
-        }
-    }
-    double confAlpha = 0.5 * (confExp - 1.0);
-
-
-    std::cout << "Parameters:\n"
-              "-n No. Nodes   " << confNoPoints << "\n"
-              "-d Avg. Degree " << confAvgDeg << "\n"
-              "-e Exponent    " << confExp << "\n"
-              "   Alpha       " << confAlpha << "\n"
-              "-w No. Worker  " << noWorker << "\n"
-              "-s Seed        " << confSeed << "\n"
-#ifdef CROSS_REFERENCE
-              << "reportMismatch " << confReportMismatches << "\n"
-#endif
-    << std::endl;
+    Configuration config(argc, argv);
 
     const auto threadsBefore = omp_get_max_threads();
 
@@ -74,19 +37,19 @@ int main(int argc, char* argv[]) {
 // run new generator
     std::vector<Point> points;
 #ifdef CROSS_REFERENCE
-    points.resize(confNoPoints, Point(0, -100, 1));
+    points.resize(config.nodes, Point(0, -100, 1));
 #endif
 
-    std::vector<EdgeId> nodeCounters(noWorker);
-    std::vector<EdgeId> edgeCounters(noWorker);
-    std::vector<std::vector<Edge>> edges(noWorker);
-    std::vector<Node> nodeAccum(noWorker*8);
+    std::vector<EdgeId> nodeCounters(config.noSegments);
+    std::vector<EdgeId> edgeCounters(config.noSegments);
+    std::vector<std::vector<Edge>> edges(config.noSegments);
+    std::vector<Node> nodeAccum(config.noSegments*8);
 
 #ifdef COUNT_NEIGHBORS
     std::vector<Node> neighborhood(confNoPoints, 0);
 #endif
 
-    Generator gen(confNoPoints, confAvgDeg, confAlpha, confSeed, noWorker);
+    Generator gen(config);
     {
         ScopedTimer timer("Generator time");
 
@@ -152,15 +115,15 @@ int main(int argc, char* argv[]) {
 #ifdef CROSS_REFERENCE
     std::vector<Edge> myEdges;
     {
-        for (unsigned int i = 0; i < noWorker; ++i)
-            myEdges.insert(myEdges.end(), edges[i].cbegin(), edges[i].cend());
+        for (const auto& e : edges)
+            myEdges.insert(myEdges.end(), e.cbegin(), e.cend());
         __gnu_parallel::sort(myEdges.begin(), myEdges.end());
     }
 
 
     // compute degree distribution
     if (0) {
-        std::vector<Node> degrees(confNoPoints, 0);
+        std::vector<Node> degrees(config.nodes, 0);
         for (const auto &e : myEdges) {
             degrees.at(e.first)++;
             degrees.at(e.second)++;
@@ -187,7 +150,7 @@ int main(int argc, char* argv[]) {
             rads.push_back(pt.r.r);
         }
 
-        NetworKit::HyperbolicGenerator nkGen(confNoPoints, confAvgDeg, confExp, 0.0);
+        NetworKit::HyperbolicGenerator nkGen(config.nodes, config.avgDegree, config.degreeExp, 0.0);
         nkGen.R = gen.getGeometry().R;
         auto graph = nkGen.generateColdOrig(angles, rads, gen.getGeometry().R);
 
@@ -231,7 +194,7 @@ int main(int argc, char* argv[]) {
             auto print = [&] (bool my, bool nk) {
                 bool numerical_issue = false;
 
-                if (confReportMismatches && my != nk) {
+                if (config.verbosity > 2 && my != nk) {
                     Edge e = my ? *mi : *ni;
                     std::cout << "["
                               << std::setw(10) << std::right << e.first << ", "
@@ -245,7 +208,7 @@ int main(int argc, char* argv[]) {
                     const Edge e = my ? *mi : *ni;
                     numerical_issue = (std::abs(points[e.first].coshDistanceToPoincare(points[e.second]) - gen.getGeometry().coshR) /  gen.getGeometry().coshR < 1e-2);
 
-                    if (confReportMismatches && !numerical_issue)
+                    if (config.verbosity > 2 && !numerical_issue)
                         std::cout << " Before " << e.first << ", " << e.second << "\n "
                                   << points[e.first] << "\n "
                                   << points[e.second] << ", "
@@ -280,7 +243,7 @@ int main(int argc, char* argv[]) {
         std::cout << "Edges produced\n"
             " My: " << myEdges.size() << "\n"
             " Nk: " << nkEdges.size() << "\n"
-            " Ex: " << static_cast<EdgeId>(confAvgDeg*confNoPoints/2) << "\n"
+            " Ex: " << static_cast<EdgeId>(config.avgDegree*config.nodes/2) << "\n"
             " Matches:    " << matches << "\n"
             " Missing:    " << missing << "\n"
             " Missing(n): " << missing_num << "\n"

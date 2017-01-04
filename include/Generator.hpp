@@ -6,6 +6,7 @@
 #include <memory>
 
 #include "Geometry.hpp"
+#include "Configuration.hpp"
 #include "Segment.hpp"
 
 #include "ScopedTimer.hpp"
@@ -14,7 +15,7 @@
 
 class Generator {
 public:
-    Generator(Count n, Coord avgDeg, Coord alpha, Seed seed, uint32_t worker);
+    Generator(const Configuration& config);
     Generator(const Generator& g) = default;
 
     
@@ -62,7 +63,7 @@ public:
 
         {
             ScopedTimer timer("Main task");
-//            omp_set_num_threads(_segments.size());
+            omp_set_num_threads(_config.noWorker);
 
             #pragma omp parallel
             {
@@ -137,7 +138,8 @@ private:
     // statistics
     static constexpr bool _verbose {false};
     static constexpr bool _stats {true};
-    
+
+    const Configuration& _config;
     const Geometry _geometry;
     const Count _noNodes;
 

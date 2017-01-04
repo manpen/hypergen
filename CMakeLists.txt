@@ -38,6 +38,7 @@ add_executable(main_hyper
     include/Segment.cpp
     include/Generator.cpp
     include/Histogram.cpp
+    include/Configuration.cpp
 )
 
 target_link_libraries(main_hyper NetworKit Vc)

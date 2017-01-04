@@ -7,22 +7,20 @@
 #include <algorithm>
 #include <random>
 
-Generator::Generator(Count n, Coord avgDeg, Coord alpha, Seed seed, uint32_t worker)
-    : _geometry(n, avgDeg, alpha)
-    , _noNodes(n)
-    , _maxRepeatRange(2.0 * M_PI / 4 / worker)
+Generator::Generator(const Configuration& config)
+    : _config(config)
+    , _geometry(config.nodes, config.avgDegree, config.alpha, config.R)
+    , _noNodes(config.nodes)
+    , _maxRepeatRange(2.0 * M_PI / 4 / config.noSegments)
     , _bandLimits(_computeBandLimits())
     , _firstStreamingBand(_computeFirstStreamingBand(_maxRepeatRange))
 {
-    DefaultPrng randgen(seed);
-    auto nodesPerSegment = RandomHelper::sampleMultinomial(n, worker, randgen);
+    DefaultPrng randgen(config.seed);
+    auto nodesPerSegment = RandomHelper::sampleMultinomial(config.nodes, config.noSegments, randgen);
 
     // print out global stats
     if (_stats) { 
-        std::cout << "Number of nodes requested: " << n << "\n"
-                     "Average Degree: " << avgDeg << "\n"
-                     "Number of Worker/Segments: " << worker << "\n"
-                     "Number of bands: " << (_bandLimits.size()-1) << "\n"
+        std::cout << "Number of bands: " << (_bandLimits.size()-1) << "\n"
                      "TargetRadius: " << _geometry.R
         << std::endl;
         
@@ -34,11 +32,11 @@ Generator::Generator(Count n, Coord avgDeg, Coord alpha, Seed seed, uint32_t wor
 
     // instantiate workers
     Node n0 = 0;
-    const Coord segWidth = 2.0 * M_PI / worker;
+    const Coord segWidth = 2.0 * M_PI / config.noSegments;
 
     assert(segWidth > _maxRepeatRange);
 
-    for(unsigned int s=0; s<worker; ++s) {
+    for(unsigned int s=0; s<config.noSegments; ++s) {
         Seed seed = static_cast<Seed>(randgen());
 
         _segments.push_back( std::make_unique<Segment>(
@@ -227,43 +225,42 @@ void Generator::_prepareGlobalPoints() {
 
 
 std::vector<Coord> Generator::_computeBandLimits() const {
-#if 1
-    Coord seriesSpacing = std::log(3) /  (_geometry.alpha + 0.5);
-    const unsigned int len = std::ceil(_geometry.R / 2 / seriesSpacing);
-    seriesSpacing = _geometry.R / 2 / len;
-
-    std::cout << "Use " << len << " bands with a spacing of " << seriesSpacing << std::endl;
-
-
     std::vector<Coord> bandRadius;
-    constexpr auto baseBands = 3;
 
-    bandRadius.reserve(baseBands + len + 1);
+    if (_config.bandLimits == Configuration::BandLimitType::BandLin) {
+        Coord seriesSpacing = std::log(_config.bandLinFactor) /  (_geometry.alpha + 0.5);
+        const unsigned int len = std::ceil(_geometry.R / 2 / seriesSpacing);
+        seriesSpacing = _geometry.R / 2 / len;
 
-    for(unsigned int k=0; k <= baseBands; k++)
-        bandRadius.push_back(_geometry.R / 2 / baseBands * k);
+        std::cout << "Use " << len << " bands with a spacing of " << seriesSpacing << std::endl;
 
-    for(unsigned int k=1; k <= len; k++)
-        bandRadius.push_back(_geometry.R / 2 + seriesSpacing * k);
+        constexpr auto baseBands = 3;
 
-    bandRadius.back() = _geometry.R;
+        bandRadius.reserve(baseBands + len + 1);
 
-#else
-    // based on NetworKIT
-    std::vector<Coord> bandRadius;
-    bandRadius.push_back(0.0);
+        for(unsigned int k=0; k <= baseBands; k++)
+            bandRadius.push_back(_geometry.R / 2 / baseBands * k);
 
-    constexpr Coord seriesRatio = 0.91;
-    const uint32_t logn =  10+ceil(_geometry.R/2.7182); // ;10; //std::min<unsigned int>(10u, std::ceil(std::log(_noNodes)));
-    const Coord a = _geometry.R * (1.0-seriesRatio) / (1.0 - std::pow(seriesRatio, logn));
+        for(unsigned int k=1; k <= len; k++)
+            bandRadius.push_back(_geometry.R / 2 + seriesSpacing * k);
 
-    for (uint32_t i = 1; i < logn; i++) {
-        Coord c_i = a * (1.0-std::pow(seriesRatio, i)) / (1.0-seriesRatio);
-        bandRadius.push_back(c_i);
+        bandRadius.back() = _geometry.R;
+
+    } else {
+        // based on NetworKIT
+        bandRadius.push_back(0.0);
+
+        constexpr Coord seriesRatio = 0.91;
+        const uint32_t logn = ceil(_geometry.R) * _config.bandExpFactor;
+        const Coord a = _geometry.R * (1.0 - seriesRatio) / (1.0 - std::pow(seriesRatio, logn));
+
+        for (uint32_t i = 1; i < logn; i++) {
+            Coord c_i = a * (1.0 - std::pow(seriesRatio, i)) / (1.0 - seriesRatio);
+            bandRadius.push_back(c_i);
+        }
+
+        bandRadius.push_back(_geometry.R);
     }
-    
-    bandRadius.push_back(_geometry.R);
-#endif
 
     return bandRadius;
 }
