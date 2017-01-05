@@ -9,14 +9,18 @@
 
 struct Point {
     Node id;
-    Coord phi;
+    Coord_b phi;
     SinhCosh r;
 
 #ifdef POINCARE
-//    Coord poinR;
-    Coord poinX;
-    Coord poinY;
+    Coord_b poinX;
+    Coord_b poinY;
+
+#ifdef LOG_TRANSFORM
+    Coord_b poinLogInvLen;
+#else
     Coord poinInvLen;
+#endif
 #endif
 
     bool _old{false};
@@ -27,17 +31,32 @@ struct Point {
     Point(const Node id, const Coord phi, const SinhCosh r)
             : id(id), phi(phi), r(r)
     {
+        /*
+         * poinLen = sqrt[(cosh-1)/(cosh+1)] = sqrt[1 - 2/(cosh+1)]
+         *         = sqrt[1 - 1.0 / X] with X = (cosh + 1)/2
+         * dist = (...) / (1 - poinLen**2)
+         *      = (...) / (1 - (1-1/X))
+         *      = (...) / (1 - (1-2/(cosh+1))
+         *      = (...) / (2 / (cosh + 1)
+         *      = (...) * 0.5 * (cosh + 1)
+         *      = (...) * X
+         */
+
 #ifdef POINCARE
-        const Coord poinRR = (r.cosh - 1.0) / (r.cosh + 1.0);
-        const Coord poinR = (std::sqrt( poinRR ));
+        const Coord pInvLen = (r.cosh + 1.0) * 0.5;
+        const Coord poinR = (std::sqrt( (1.0 - 1.0 / pInvLen)));
+
+#ifdef LOG_TRANSFORM
+        poinLogInvLen = std::log(pInvLen);
+#else
+        poinInvLen = pInvLen;
+#endif
 
         ASSERT_LS(poinR, 1.0);
-        ASSERT_LS(poinRR, 1.0);
 
         poinX = (poinR * std::sin(phi));
         poinY = (poinR * std::cos(phi));
 
-        poinInvLen = (1.0 / (1.0 - poinRR));
 #endif
     }
 
@@ -80,7 +99,11 @@ struct Point {
     Coord coshDistanceToPoincare(const Point& o) const {
         const auto diffX = poinX - o.poinX;
         const auto diffY = poinY - o.poinY;
+#ifdef LOG_TRANSFORM
+        return 1.0 + std::exp(2.0*(diffX*diffX + diffY*diffY) - poinLogInvLen - o.poinLogInvLen);
+#else
         return 1.0 + 2.0*(diffX*diffX + diffY*diffY) * poinInvLen * o.poinInvLen;
+#endif
     }
 
     Coord distanceTo(const Point& o) const {

@@ -13,7 +13,7 @@ include_directories(${Vc_INCLUDE_DIR})
 link_directories("${Vc_INCLUDE_DIR}/../lib/")
 
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++14 -fopenmp -g -march=native")
-set(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS} -fsanitize=address -fno-omit-frame-pointer -O0")
+set(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS} -fsanitize=address -fno-omit-frame-pointer -O3")
 
 if (${CMAKE_COMPILER_IS_GNUCXX})
     set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS} -O3 -ffast-math -DNDEBUG")
@@ -27,7 +27,7 @@ endif()
 add_executable(mhyperbolic main.cpp)
 
 add_executable(benchmark_networkit benchmark_networkit.cpp)
-target_link_libraries(benchmark_networkit NetworKit)
+target_link_libraries(benchmark_networkit NetworKitNoEdges)
 
 add_executable(main_hyper 
     main_hyper.cpp

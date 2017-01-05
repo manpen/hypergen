@@ -14,7 +14,10 @@
 #include "Assert.hpp"
 #include "Histogram.hpp"
 
+#include <Vc/Vc>
 #include <Vc/Allocator>
+
+//#define SKIP_DIST_COMP
 
 class BandSegment {
 public:
@@ -81,7 +84,9 @@ public:
         }
 
 #ifdef POINCARE
+    #ifndef LOG_TRANSFORM
         const Coord_v threshR = static_cast<Coord_b>(_geometry.poincareR);
+    #endif
 #else
         const Coord_v threshR = static_cast<Coord_b>(_geometry.coshR);
 #endif
@@ -98,7 +103,11 @@ public:
 #ifdef POINCARE
             const Coord_v poinX(static_cast<Coord_b>(pt.poinX));
             const Coord_v poinY(static_cast<Coord_b>(pt.poinY));
-            const Coord_v poinInvR(static_cast<Coord_b>(pt.poinInvLen));
+    #ifdef LOG_TRANSFORM
+            const Coord_v threshR = static_cast<Coord_b>(_geometry.logPoincareR - pt.poinLogInvLen);
+    #else
+            const Coord_v poin_invr = static_cast<Coord_b>(pt.poinInvLen);
+    #endif
 #else
             const Coord_b ptrsinh = pt.r.invsinh;
 #endif
@@ -131,31 +140,39 @@ public:
 #endif
 
             for(unsigned int i = 0; i < this_upper; ++i) {
-                auto ptIsSmaller = (_req_phi_stop[i] > ptphi) && (_req_phi_start[i] <= ptphi);
-                if (ptIsSmaller.isEmpty()) {
-                    //noCandidates += _req_phi_start[0].size();
+                auto prelimChecks =
+                           (_req_phi_stop[i] > ptphi)
+                        && (_req_phi_start[i] <= ptphi)
+                        && ((_req_cosh[i] < ptrcosh) || (_req_cosh[i] == ptrcosh && _req_phi[i] < ptphi));
+                
+                if (Endgame)
+                        prelimChecks = prelimChecks && (pointFromLastSegment || _req_old[i]);
+
+                if (Statistics::enablePrelimCheck)
+                    _stats_data.prelimCheck.addPoint( prelimChecks.count() );
+
+                if (prelimChecks.isEmpty()) {
                     continue;
                 }
 
-                ptIsSmaller = ptIsSmaller &&
-                        ((_req_cosh[i] <= ptrcosh) || (_req_cosh[i] == ptrcosh && _req_phi[i] < ptphi));
-
-                if (Endgame)
-                    ptIsSmaller = ptIsSmaller &&
-                        (pointFromLastSegment || _req_old[i]);
 
                 // computations
 #ifdef POINCARE
                 const auto deltaX = _req_poin_x[i] - poinX;
                 const auto deltaY = _req_poin_y[i] - poinY;
 
-                const auto dist = (deltaX*deltaX + deltaY*deltaY) * poinInvR * _req_poin_invr[i];
+                #ifdef LOG_TRANSFORM
+                const auto dist = deltaX*deltaX + deltaY*deltaY;
+                const auto isEdge = prelimChecks && (dist < Vc::exp(threshR - _req_poin_loginvr[i]));
+                #else
+                const auto dist = (deltaX*deltaX + deltaY*deltaY) * _req_poin_invr[i] * poin_invr;
+                const auto isEdge = prelimChecks && (dist < threshR);
+                #endif
 
-                const auto isEdge = ptIsSmaller && (dist < threshR);
 #else
                 const auto dist = (_req_cosh[i] * ptrcosh - threshR) * (_req_invsinh[i] * ptrsinh);
                 const auto cosDist = Vc::cos(_req_phi[i] - ptphi);
-                const auto isEdge = ptIsSmaller && (dist < cosDist);
+                const auto isEdge = prelimChecks && (dist < cosDist);
 #endif
 
                 _stats_data.compares += CoordPacking;
@@ -167,7 +184,7 @@ public:
                         while(active_iter->id != neighbor)
                             ++active_iter;
 
-                        if (_debugSuperParanoid && (pt.coshDistanceToPoincare(*active_iter) > _geometry.coshR)) {
+                        if (_debugSuperParanoid && (pt.coshDistanceToPoincare(*active_iter) - _geometry.coshR) / _geometry.coshR > 1e-4) {
                             std::cerr << "pt:     " << pt << "\n"
                                          "req:    " << *active_iter << "\n"
                                          "req_ps: " << _req_phi_start[i][j] << "\n"
@@ -188,7 +205,7 @@ public:
                     }
 
                     //if (Statistics::enableCandidates)
-                    //    noCandidates += ptIsSmaller[j] && pt.id != neighbor;
+                    //    noCandidates += prelimChecks[j] && pt.id != neighbor;
                 }
             }
 
@@ -199,7 +216,7 @@ public:
 
         // remove completed requests
         {
-            auto thresh = std::min(_phiRange.second, _generator.nextPointLB());
+            auto thresh = std::min<Coord_b>(_phiRange.second, _generator.nextPointLB());
 
             if (p == _points.end() && thresh > _points.back().phi)
                 thresh = _points.back().phi;
@@ -292,15 +309,17 @@ public:
         constexpr static bool enablePointSizes { enableHistograms && true };
         constexpr static bool enableCandidates { enableHistograms && true };
         constexpr static bool enableNeighbors  { enableHistograms && true };
+        constexpr static bool enablePrelimCheck{ enableHistograms && true };
 
         Count batches{0};
         EdgeId edges{0};
         EdgeId compares{0};
 
         Histogram<enableActiveSizes> activeSizes;
-        Histogram<enablePointSizes> pointSizes;
-        Histogram<enableCandidates> candidates;
-        Histogram<enableNeighbors> neighbors;
+        Histogram<enablePointSizes>  pointSizes;
+        Histogram<enableCandidates>  candidates;
+        Histogram<enableNeighbors>   neighbors;
+        Histogram<enablePrelimCheck> prelimCheck;
 
 
         Statistics operator+(const Statistics& o) const {
@@ -313,6 +332,7 @@ public:
             s.neighbors  = neighbors  + o.neighbors;
             s.edges      = edges      + o.edges;
             s.compares   = compares   + o.compares;
+            s.prelimCheck= prelimCheck+ o.prelimCheck;
 
             return s;
         }
@@ -368,8 +388,13 @@ private:
 #ifdef POINCARE
     std::vector<Coord_v, Vc::Allocator<Coord_v> > _req_poin_x;
     std::vector<Coord_v, Vc::Allocator<Coord_v> > _req_poin_y;
-    std::vector<Coord_v, Vc::Allocator<Coord_v> > _req_poin_invr;
-#else
+    #ifdef LOG_TRANSFORM
+        std::vector<Coord_v, Vc::Allocator<Coord_v> > _req_poin_loginvr;
+    #else
+        std::vector<Coord_v, Vc::Allocator<Coord_v> > _req_poin_invr;
+    #endif
+
+    #else
     std::vector<Coord_v, Vc::Allocator<Coord_v> > _req_invsinh;
 #endif
     std::vector<Coord_m, Vc::Allocator<Coord_m> > _req_old;
@@ -393,7 +418,11 @@ private:
             #ifdef POINCARE
             _req_poin_x.resize(vectorSize);
             _req_poin_y.resize(vectorSize);
-            _req_poin_invr.resize(vectorSize);
+            #ifdef LOG_TRANSFORM
+                _req_poin_loginvr.resize(vectorSize);
+            #else
+                _req_poin_invr.resize(vectorSize);
+            #endif
             #else
             _req_invsinh  .resize(vectorSize);
             #endif
@@ -418,7 +447,11 @@ private:
 #ifdef POINCARE
             _req_poin_x[i][j]    = req.poinX;
             _req_poin_y[i][j]    = req.poinY;
+    #ifdef LOG_TRANSFORM
+            _req_poin_loginvr[i][j] = req.poinLogInvLen;
+    #else
             _req_poin_invr[i][j] = req.poinInvLen;
+    #endif
 #else
             _req_invsinh[i][j] = req.r.invsinh;
 #endif

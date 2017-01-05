@@ -15,7 +15,8 @@ struct Geometry {
     const Coord coshR;
     const Coord coshAlphaR;
     const Coord poincareR;
-    
+    const Coord_b logPoincareR;
+
     Geometry() = delete;
     
     Geometry(Coord alpha, Coord avgDeg, Coord R) 
@@ -25,6 +26,7 @@ struct Geometry {
         , coshR(std::cosh(R))
         , coshAlphaR(std::cosh(alpha*R))
         , poincareR(coshR * 0.5 - 0.5)
+        , logPoincareR(std::log(poincareR))
     {}    
     
     Geometry(Count nodes, Coord avgDeg, Coord alpha, Coord R = -1)
@@ -51,9 +53,9 @@ struct Geometry {
         return std::acos(deltaPhiCos);
     }
 
-    static Coord getExpectedDegree(Coord R, Coord alpha, Node nodes = 1) {
-        const Coord gamma = 2*alpha+1;
-        const Coord xi = (gamma-1)/(gamma-2);
+    static double getExpectedDegree(double R, double alpha, Node nodes = 1) {
+        const double gamma = 2*alpha+1;
+        const double xi = (gamma-1)/(gamma-2);
 
         Coord firstSumTerm = exp(-R/2);
         Coord secondSumTerm = exp(-alpha*R)*(alpha*(R/2)*((M_PI/4)*pow((1/alpha),2)-(M_PI-1)*(1/alpha)+(M_PI-2))-1);

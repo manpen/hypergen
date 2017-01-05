@@ -11,15 +11,21 @@
 #define unlikely(x) __builtin_expect((x),0)
 
 #define POINCARE
+#define LOG_TRANSFORM
 
-#ifndef NDEBUG
+#if !defined(NDEBUG)
 #define CROSS_REFERENCE
 #endif
 
-using Coord = double;
 using Node = unsigned long int;
+using Coord = double;
 
-using Coord_b = double;
+#ifdef LOG_TRANSFORM
+    using Coord_b = float;
+#else
+    using Coord_b = double;
+#endif
+
 using Coord_v = Vc::Vector<Coord_b>;
 using Coord_m = Vc::Mask<Coord_b>;
 using Node_b = uint64_t;
@@ -38,11 +44,12 @@ using Edge = std::pair<Node, Node>;
 template <typename T>
 using Interval = std::pair<T, T>;
 
-using CoordInter = Interval<Coord>;
+using CoordInter = Interval<Coord_b>;
 
 struct SinhCosh {
     Coord invsinh;
     Coord cosh;
+
 #ifdef CROSS_REFERENCE
     Coord r;
 #endif

@@ -27,11 +27,24 @@ int main(int argc, char* argv[]) {
     const auto threadsBefore = omp_get_max_threads();
 
     std::cout << "SIMD: NodePacking=" << NodePacking << " CoordPacking=" << CoordPacking << std::endl;
-#ifdef CROSS_REFERENCE
-    std::cout << "Cross-Referencing: Enabled" << std::endl;
-#else
-    std::cout << "Cross-Referencing: Disabled" << std::endl;
-#endif
+    {
+        std::cout << "Cross-Referencing: "
+        #ifdef CROSS_REFERENCE
+            "ENABLED"
+        #else
+            "DISABLED"
+        #endif
+        << std::endl;
+    }
+    {
+        std::cout << "Log-Transform: "
+        #ifdef LOG_TRANSFORM
+            "ENABLED"
+        #else
+            "DISABLED"
+        #endif
+        << std::endl;
+    }
 
 
 // run new generator

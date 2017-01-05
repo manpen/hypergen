@@ -339,6 +339,7 @@ void Generator::_reportEndStats() const {
     tot_stats.candidates.toStream(std::cout, "HIST-TOT-CND");
     tot_stats.pointSizes.toStream(std::cout, "HIST-TOT-PTS");
     tot_stats.neighbors.toStream(std::cout, "HIST-TOT-NBR");
+    tot_stats.prelimCheck.toStream(std::cout, "HIST-PRE-CHK");
 }
 
 void Generator::_dumpAllPointsAndRequests(const std::vector<std::unique_ptr<Segment>>& segments, const std::string key) const {
