@@ -5,6 +5,7 @@
 #include <vector>
 #include <memory>
 
+#include "RandomHelper.hpp"
 #include "Geometry.hpp"
 #include "Configuration.hpp"
 #include "Segment.hpp"
@@ -25,50 +26,52 @@ public:
                   PointCallback pointCB
     ) {
         const unsigned int noBands = _bandLimits.size()-1;
+        std::vector<Coord> maxPhis(_segments.size(), 0.0);
+
+        std::vector<double> timer_global(_segments.size());
+        std::vector<double> timer_main(_segments.size());
+        std::vector<double> timer_endgame(_segments.size());
+
+
 
         // GLOBAL PHASE
+        _prepareGlobalPoints();
+
+        #pragma omp parallel
         {
-            ScopedTimer timer("Global Generation Phase");
-            // compute all global points and request
-            _prepareGlobalPoints();
+            #pragma omp for
             for(unsigned int s=0; s < _segments.size(); ++s) {
-                for(unsigned int b=0; b < _firstStreamingBand; ++b) {
-                    for(const auto & pt : _segments[s]->getBand(b).getPoints()) {
+                for (unsigned int b = 0; b < _firstStreamingBand; ++b) {
+                    for (const auto &pt : _segments[s]->getBand(b).getPoints()) {
                         pointCB(pt, s);
                     }
                 }
-            }
-            
-            // handle their edges
-            for(unsigned int s=0; s < _segments.size(); ++s) { // TODO: in parallel?
-                for(unsigned int b=0; b < _firstStreamingBand; ++b) {
-                    auto& band =_segments[s]->getBand(b);
 
-                    if (!band.getPoints().empty())
-                        band.generateEdges<false>(
-                            [&] (const Edge& e) {edgeCB(e, s);},
-                            _segments[s]->getBand(b)    // Pass band itself in order to prevent propagation (which happened earlier)
-                        );
-                    band.getRequests().clear();
+                {
+                    ScopedTimer timer(timer_global[s]);
+                    for (unsigned int b = 0; b < _firstStreamingBand; ++b) {
+                        auto &band = _segments[s]->getBand(b);
+
+                        if (!band.getPoints().empty())
+                            band.generateEdges<false, true>(
+                                    [&](const Edge &e) { edgeCB(e, s); },
+                                    (b < _firstStreamingBand)
+                                    ? _segments[s]->getBandAbove(b)
+                                    : _segments[s]->getBand(b) // the highest global band is not supposed to propagate requests
+                            );
+
+                        if (b < _firstStreamingBand)
+                            band.propagate<false, true>(band.getPhiRange().second,
+                                                        band.getPhiRange().second,
+                                                        _segments[s]->getBand(b)
+                            );
+                    }
                 }
-            }
-        }
-
-        _dumpAllPointsAndRequests(_segments, "s");
-        _dumpAllPointsAndRequests(_endgame_segments, "e");
 
 
-        // Streaming Phase
-        std::vector<Coord> maxPhis(_segments.size(), 0.0);
+                {
+                    ScopedTimer timer(timer_main[s]);
 
-        {
-            ScopedTimer timer("Main task");
-            omp_set_num_threads(_config.noWorker);
-
-            #pragma omp parallel
-            {
-                #pragma omp for
-                for (unsigned int s = 0; s < _segments.size(); ++s) {
                     auto &segment = *_segments[s];
                     auto &firstBand = segment.getBand(_firstStreamingBand);
 
@@ -86,47 +89,86 @@ public:
                             );
                         } while (!finalize);
                     }
-                }
 
-                _dumpAllPointsAndRequests(_segments, "e");
-
-                #pragma omp for
-                for (unsigned int oldSeg = 0; oldSeg < _segments.size(); ++oldSeg) {
-                    // prepare endgame
-                    const auto endgameSeg = (oldSeg + 1) % _segments.size();
-
+                    // clean up requests
+                    auto phiEnd = segment.getPhiRange().second;
                     for (unsigned int b = _firstStreamingBand; b < noBands; ++b) {
-                        const auto &oldBand = _segments.at(oldSeg)->getBand(b);
-                        auto &endgameBand = _endgame_segments.at(endgameSeg)->getBand(b);
-
-                        const Coord maxPhi = endgameBand.prepareEndgame(oldBand);
-                        if (maxPhi > maxPhis[endgameSeg])
-                            maxPhis[endgameSeg] = maxPhi;
-
-                    }
-
-                    if (0 && _stats) {
-                        std::cout << "maxPhi: " << (maxPhis[endgameSeg] - _endgame_segments[endgameSeg]->getPhiRange().first)
-                                  << ", conservative: " << +_maxRepeatRange << std::endl;
-                    }
-
-                    // execute endgame
-                    {
-                        bool finalize = true;
-
-                        do {
-                            finalize = !finalize;
-                            _endgame_segments[endgameSeg]->advance<true>(
-                                    _firstStreamingBand,
-                                    maxPhis[endgameSeg],
-                                    finalize,
-                                    [&](const Edge &e) { edgeCB(e, endgameSeg); },
-                                    [&](const Point &p) { pointCB(p, endgameSeg); }
-                            );
-                        } while (!finalize);
+                        segment.getBand(b).getActive().update<false>(phiEnd, phiEnd, [](const Request &) {});
                     }
                 }
             }
+
+
+            #pragma omp for
+            for (unsigned int oldSeg = 0; oldSeg < _segments.size(); ++oldSeg) {
+                ScopedTimer timer(timer_endgame[oldSeg]);
+
+                // prepare endgame
+                const auto endgameSeg = (oldSeg + 1) % _segments.size();
+
+                for (unsigned int b = _firstStreamingBand; b < noBands; ++b) {
+                    const auto &oldBand = _segments.at(oldSeg)->getBand(b);
+                    auto &endgameBand = _endgame_segments.at(endgameSeg)->getBand(b);
+
+                    const Coord maxPhi = endgameBand.prepareEndgame(oldBand);
+                    if (maxPhi > maxPhis[endgameSeg])
+                        maxPhis[endgameSeg] = maxPhi;
+
+                }
+
+                // report and assert replay width
+                {
+                    const auto width = (maxPhis[endgameSeg] - _endgame_segments[endgameSeg]->getPhiRange().first);
+                    if (_verbose) {
+                        std::cout << "Replay-width of endgameSeg id " << endgameSeg << ": " << width << ". "
+                                     "Conservative: " << _maxRepeatRange << std::endl;
+                    }
+#ifndef NDEBUG
+                    for(unsigned i=_firstStreamingBand; i<noBands; ++i) {
+                        std::cout << "Band " << i << "\n" << _endgame_segments[endgameSeg]->getBand(i).getActive() << std::endl;
+                        for(const auto& pt: _endgame_segments[endgameSeg]->getBand(i).getPoints())
+                            std::cout << pt << std::endl;
+                    }
+#endif
+                    ASSERT_LE(width, _maxRepeatRange);
+                }
+
+                // execute endgame
+                if (1) {
+                    bool finalize = true;
+
+                    do {
+                        finalize = !finalize;
+                        _endgame_segments[endgameSeg]->advance<true>(
+                                _firstStreamingBand,
+                                maxPhis[endgameSeg],
+                                finalize,
+                                [&](const Edge &e) { edgeCB(e, endgameSeg); },
+                                [&](const Point &p) { pointCB(p, endgameSeg); }
+                        );
+                    } while (!finalize);
+                }
+            }
+        }
+
+        if (_stats) {
+            auto reportTimerStats = [] (const std::string& key, std::vector<double> timers) {
+                if (timers.size() == 1) {
+                    std::cout << timers.front() << "ms";
+                    return;
+                }
+
+                double avg = std::accumulate(timers.cbegin(), timers.cend(), 0.0) / timers.size();
+
+                std::sort(timers.begin(), timers.end());
+                std::cout << key << " min: " << timers.front() << "ms\n"
+                          << key << " max: " << timers.back() << "ms\n"
+                          << key << " avg: " << avg << "ms\n";
+            };
+
+            reportTimerStats("Global  Phase Timer", timer_global);
+            reportTimerStats("Main    Phase Timer", timer_main);
+            reportTimerStats("Endgame Phase Timer", timer_endgame);
         }
 
         _reportEndStats();
@@ -136,12 +178,14 @@ public:
     
 private:
     // statistics
-    static constexpr bool _verbose {false};
+    static constexpr bool _verbose {VERBOSITY(false)};
     static constexpr bool _stats {true};
 
     const Configuration& _config;
     const Geometry _geometry;
     const Count _noNodes;
+    Node _globalNodes;
+    DefaultPrng _randgen;
 
     // geometry
     const Coord _maxRepeatRange;

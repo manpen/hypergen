@@ -6,17 +6,27 @@
 
 #include <algorithm>
 #include <random>
+#include "PointGenerator.hpp"
 
 Generator::Generator(const Configuration& config)
     : _config(config)
     , _geometry(config.nodes, config.avgDegree, config.alpha, config.R)
     , _noNodes(config.nodes)
+    , _randgen(config.seed)
     , _maxRepeatRange(2.0 * M_PI / 4 / config.noSegments)
     , _bandLimits(_computeBandLimits())
     , _firstStreamingBand(_computeFirstStreamingBand(_maxRepeatRange))
 {
-    DefaultPrng randgen(config.seed);
-    auto nodesPerSegment = RandomHelper::sampleMultinomial(config.nodes, config.noSegments, randgen);
+    // compute number of nodes in global section
+    {
+        const auto prob = _geometry.radCdf(_bandLimits[_firstStreamingBand]);
+        std::binomial_distribution<Node> distr(_noNodes, prob);
+        _globalNodes = distr(_randgen);
+    }
+
+    auto nodesPerSegment = RandomHelper::sampleMultinomial(config.nodes - _globalNodes,
+                                                           config.noSegments,
+                                                           _randgen);
 
     // print out global stats
     if (_stats) { 
@@ -24,32 +34,32 @@ Generator::Generator(const Configuration& config)
                      "TargetRadius: " << _geometry.R
         << std::endl;
         
-        std::cout << "Nodes per segment:";
+        std::cout << "Streaming nodes per segment:";
         for(const auto& n : nodesPerSegment)
             std::cout << " " << n;
         std::cout << std::endl;
     }
 
     // instantiate workers
-    Node n0 = 0;
+    Node n0 = _globalNodes;
     const Coord segWidth = 2.0 * M_PI / config.noSegments;
 
     assert(segWidth > _maxRepeatRange);
 
     for(unsigned int s=0; s<config.noSegments; ++s) {
-        Seed seed = static_cast<Seed>(randgen());
+        Seed seed = static_cast<Seed>(_randgen());
 
         _segments.push_back( std::make_unique<Segment>(
             n0, nodesPerSegment[s],
             CoordInter{s*segWidth, (1+s)*segWidth},
-            _geometry, _bandLimits,
+            _geometry, _config, _bandLimits, _firstStreamingBand,
             seed
         ));
 
         _endgame_segments.push_back( std::make_unique<Segment>(
             n0, nodesPerSegment[s],
             CoordInter{s*segWidth, (1+s)*segWidth},
-            _geometry, _bandLimits,
+            _geometry, _config, _bandLimits, _firstStreamingBand,
             seed
         ));
 
@@ -74,7 +84,7 @@ Generator::Generator(const Configuration& config)
                       << " " << std::setw(10) << std::right << _bandLimits[b]
                       << " " << std::setw(10) << std::right << _bandLimits[b+1]
                       << " " << std::setw(10) << std::right << _geometry.deltaPhi(_bandLimits[b], _bandLimits[b])
-                      << " " << std::setw(10) << std::right << pointsInBand
+                      << " " << std::setw(10) << std::right <<  pointsInBand
                       << " " << std::setw(10) << std::right << cumPoints
                       << " " << (b < _firstStreamingBand ? "global" : "stream")
                       << std::endl;
@@ -84,142 +94,130 @@ Generator::Generator(const Configuration& config)
 
 void Generator::_prepareGlobalPoints() {
     // compute all points in global section
-    for(unsigned int sIdx = 0; sIdx < _segments.size(); ++sIdx) {
-        for(unsigned int actBandIdx = 0; actBandIdx < _firstStreamingBand; ++actBandIdx) {
-            _segments[sIdx]->getBand(actBandIdx).generateGlobalPoints();
-        }
+    std::vector<Request> requests;
+    std::vector<Point> points;
+    {
+        PointGenerator ptgen(0, _globalNodes,
+                             {0, 2 * M_PI}, {0, _bandLimits[_firstStreamingBand]},
+                             _geometry, _randgen());
+
+        ptgen.generate(_globalNodes, points, requests);
     }
 
-    _dumpAllPointsAndRequests(_segments);
 
-    const unsigned int noBands = _bandLimits.size() - 1;
+
+    // distribute points
+    const Coord segWidth = (2.0*M_PI) / _segments.size();
+    const Coord invSegWidth = 1.0 / segWidth;
 
     // compute sinh/cosh band limits
     std::vector<SinhCosh> bandLimits;
+    const auto noBands = _bandLimits.size() - 1;
     for(unsigned int s=0; s <= noBands; ++s)
         bandLimits.emplace_back(SinhCosh(_bandLimits[s]));
+    const auto limitEnd = bandLimits.cbegin() + _firstStreamingBand + 1;
 
-    // distribute requests
-    const Coord segWidth = (2.0*M_PI) / _segments.size();
-    const Coord invSegWidth = 1.0 / segWidth; 
-    
-    for(unsigned int sIdx = 0; sIdx < _segments.size(); ++sIdx) {
-        for(unsigned int actBandIdx = 0; actBandIdx <= _firstStreamingBand; ++actBandIdx) {
-            auto& actBand = _segments[sIdx]->getBand(actBandIdx);
-            
-            // insert the request into all segments (partially) covered by range
-            auto addRequest = [&] (const CoordInter range,
-                                   const Request& req,
-                                   const unsigned int bandIdx,
-                                   bool maySkip = true)
-            {
-                const unsigned int startSeg = range.first * invSegWidth;
-                const unsigned int stopSeg = std::min<unsigned int>(ceil(range.second * invSegWidth + 0.1), _segments.size());
-                assert(startSeg <= stopSeg);
-                
-                //std::cout
-                //    << " add " << req << " to band " << actBandIdx << " in segs " << startSeg << " to " << stopSeg << " originating from " << sIdx
-                //    << " restricted to " << range.first << " to " << range.second
-                //<< std::endl;
-                
-                for(unsigned int s = startSeg; s != stopSeg; ++s) {
-                    // skip issuing segment, since the request is already in active requests
-                    if (maySkip && (s == sIdx))
-                        continue;
-                    
-                    auto & band = _segments.at(s)->getBand(bandIdx);
+    //TODO: If we keep linear bands we can replace this by simple division
+    auto getBandIdx = [&] (const Point& pt) {
+        unsigned int band = std::distance(bandLimits.cbegin(),
+            std::lower_bound(bandLimits.cbegin(), limitEnd, pt.r.cosh,
+                             [] (const SinhCosh& l, const Coord& c) {return l.cosh < c;}));
 
-                    // insert point and reduce query range to the limits of this segment
-                    band.getInsertionBuffer().push_back(req);
-                    band.getInsertionBuffer().back().range = {
-                        std::max<Coord>(range.first, band.getPhiRange().first),
-                        std::min<Coord>(range.second, band.getPhiRange().second)
-                    };
-                }
-            };
-            
-            // iterate over all requests and distribute them to all segments involved
-            for(Request & req : actBand.getRequests()) {
-                if (req.phi > 2*M_PI)
-                    req.phi -= 2*M_PI;
+        ASSERT_GT(band, 0);
+        ASSERT_LE(band, _firstStreamingBand);
 
-                // distribute to other segments
-                if (req.range.first >= 0.0 && req.range.second <= 2.0 * M_PI) {
-                    addRequest(req.range, req, actBandIdx, true);
-                } else {
-                    const Coord minPolar = fmod(req.range.first + 2.0 * M_PI, 2.0 * M_PI);
-                    const Coord maxPolar = fmod(req.range.second, 2.0 * M_PI);
-                    addRequest({0, maxPolar}, req, actBandIdx, false);
-                    addRequest({minPolar, 2 * M_PI}, req, actBandIdx, true);
-                }
+        return band-1;
+    };
 
-                // distribute to higher bands
-                for(unsigned int insBand = actBandIdx+1; insBand < noBands; ++insBand) {
-                    Request nReq(req, _geometry, bandLimits[insBand]);
 
-                    // distribute to other bands
-                    if (nReq.range.first >= 0.0 && nReq.range.second <= 2.0 * M_PI) {
-                        addRequest(nReq.range, nReq, insBand, false);
-                    } else {
-                        const Coord minPolar = fmod(nReq.range.first + 2.0 * M_PI, 2.0 * M_PI);
-                        const Coord maxPolar = fmod(nReq.range.second, 2.0 * M_PI);
-                        addRequest({0, maxPolar}, nReq, insBand, false);
-                        addRequest({minPolar, 2 * M_PI}, nReq, insBand, false);
-                    }
-                }
+    // Insert Points
+    {
+        for (auto &pt : points) {
+            if (pt.phi > 2 * M_PI)
+                pt.phi -= 2 * M_PI;
 
-                // reduce range to lay within the boundaries of the current segment
-                req.range = {
-                    std::max<Coord>(req.range.first,  actBand.getPhiRange().first),
-                    std::min<Coord>(req.range.second, actBand.getPhiRange().second)
-                };
-            }
-            
-            // iterate over all points and distribute them to the right segment
-            for(Point & pt : actBand.getPoints()) {
-                pt.phi = fmod(pt.phi, 2.0*M_PI);
-                const unsigned int ptSeg = pt.phi * invSegWidth;
-                if (ptSeg != sIdx) {
-                    _segments.at(ptSeg)->getBand(actBandIdx).getPoints().push_back(pt);
-                }
-            }
+            const unsigned int seg = pt.phi * invSegWidth;
+            const unsigned int band = getBandIdx(pt);
+
+            _segments[seg]->getBand(band).getPoints().push_back(pt);
+        }
+
+        for (unsigned int sIdx = 0; sIdx < _segments.size(); ++sIdx) {
+            for (unsigned int band = 0; band < _firstStreamingBand; ++band)
+                _segments[sIdx]->getBand(band).sortPoints();
         }
     }
 
+    // Insert Requests
+    {
+        // insert the request into all segments (partially) covered by range
+        auto addRequest = [&](const CoordInter range,
+                              const Request &req,
+                              const unsigned int bandIdx) {
+            const unsigned int startSeg = range.first * invSegWidth;
+            const unsigned int stopSeg = std::min<unsigned int>(ceil(range.second * invSegWidth), _segments.size());
+            assert(startSeg <= stopSeg);
 
-    _dumpAllPointsAndRequests(_segments);
+            for (unsigned int s = startSeg; s != stopSeg; ++s) {
+                auto &band = _segments.at(s)->getBand(bandIdx);
+                band.addRequest(
+                        Request(req, {
+                                std::max<Coord>(range.first, band.getPhiRange().first),
+                                std::min<Coord>(range.second, band.getPhiRange().second)
+                        })
+                );
+            }
+        };
 
-    // sort insertion buffers, clean points and sort them
+        auto repairAndInsertRequest = [&](Request req, const unsigned bandIdx) {
+            // distribute to other segments
+            if (req.range.first >= 0.0 && req.range.second <= 2.0 * M_PI) {
+                addRequest(req.range, req, bandIdx);
+            } else if (req.range.second - req.range.first >= 2 * M_PI - 1e-3) {
+                addRequest({0, 2 * M_PI}, req, bandIdx);
+            } else if (req.range.first <= 0) {
+                addRequest({0, req.range.second}, req, bandIdx);
+                addRequest({2 * M_PI + req.range.first, 2 * M_PI}, req, bandIdx);
+            } else {
+                ASSERT_GT(req.range.second, 2 * M_PI);
+                addRequest({0, req.range.second - 2 * M_PI}, req, bandIdx);
+                addRequest({req.range.first, 2 * M_PI}, req, bandIdx);
+            }
+        };
+
+        for (auto &req : requests) {
+            // iterate over all requests and distribute them to all segments involved
+            if (req.phi > 2 * M_PI)
+                req.phi -= 2 * M_PI;
+
+            const unsigned int band = getBandIdx(req);
+            repairAndInsertRequest(req, band);
+
+            for (unsigned int b = band + 1; b <= _firstStreamingBand; ++b)
+                repairAndInsertRequest(Request(req, _geometry, bandLimits[b]), b);
+        }
+    }
+
+    // copy state of first streaming band into endgame
     for(unsigned int s=0; s < _segments.size(); s++) {
         auto & seg = _segments[s];
-        for(unsigned int actBandIdx = 0; actBandIdx < noBands; ++actBandIdx) {
-            auto& band = seg->getBand(actBandIdx);
+        auto& band = seg->getBand(_firstStreamingBand);
+        _endgame_segments[s]->getBand(_firstStreamingBand).copyGlobalState(band, _maxRepeatRange);
+    }
 
-            // merge from insertions buffers
-            auto& insBuf = band.getInsertionBuffer();
-            std::sort(insBuf.begin(), insBuf.end());
-            if (band.getRequests().empty()) {
-                band.getRequests().swap(insBuf);
-            } else {
-                std::vector<Request> merged(band.getRequests().size() + insBuf.size());
-                std::merge(insBuf.cbegin(), insBuf.cend(), band.getRequests().cbegin(), band.getRequests().cend(), merged.begin());
-                band.getRequests().swap(merged);
-                insBuf.clear();
-            }
-
-            // correct manipulated points
-            auto& pts = band.getPoints();
-            const auto end = std::remove_if(pts.begin(), pts.end(), [&seg] (const auto& pt) {
-                return pt.phi < seg->getPhiRange().first || pt.phi > seg->getPhiRange().second;
-            });
-            pts.erase(end, pts.end());
-
-            std::sort(pts.begin(), pts.end(), [] (const auto&a, const auto&b) {
-                return a.phi < b.phi;
-            });
-
-            _endgame_segments[s]->getBand(actBandIdx).copyGlobalState(band, _maxRepeatRange);
+    if (_stats) {
+        Node cumPoints = 0;
+        for(unsigned int b=0; b<_firstStreamingBand; b++) {
+            const auto points = std::accumulate(_segments.cbegin(), _segments.cend(), 0,
+                [b] (const Node s, const std::unique_ptr<Segment>& seg) {return s+ seg->getBand(b).getPoints().size();}
+            );
+            cumPoints += points;
+            std::cout << std::setw(4) << std::right << b
+                      << " " << std::setw(10) << std::right << points
+                      << " " << std::setw(10) << std::right << cumPoints
+                      << std::endl;
         }
+
     }
 }
 
@@ -345,7 +343,7 @@ void Generator::_reportEndStats() const {
 void Generator::_dumpAllPointsAndRequests(const std::vector<std::unique_ptr<Segment>>& segments, const std::string key) const {
     if (!_verbose)
         return;
-
+/*
     for(unsigned int s=0; s<segments.size(); ++s) {
         std::cout << key << " Segment " << s << std::endl;
         for(unsigned int b=0; b <  _bandLimits.size()-1; ++b) {
@@ -371,6 +369,7 @@ void Generator::_dumpAllPointsAndRequests(const std::vector<std::unique_ptr<Segm
             }
         }
     }
+*/
 }
 
 

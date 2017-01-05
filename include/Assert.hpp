@@ -35,6 +35,7 @@
  */
 
 #ifndef NDEBUG
+    #define ASSERT_STREAM std::cout
     #define ASSERT_FUNC __PRETTY_FUNCTION__
     #include <iostream>
     #include <cstdlib>
@@ -44,14 +45,14 @@
     //! Requires condition X to be satisfied.
     #define ASSERT(X) {\
         if (!(X)) {\
-            std::cerr <<  "Assertion (" << #X << ") at " << __FILE__ << ":" << __LINE__ << "\n   in " << ASSERT_FUNC << " failed" << std::endl;\
+            ASSERT_STREAM <<  "Assertion (" << #X << ") at " << __FILE__ << ":" << __LINE__ << "\n   in " << ASSERT_FUNC << " failed" << std::endl;\
             abort();\
         }}
 
     #define ASSERT_BINOP(OP1, OP, OP2) {\
         {auto x1 = (OP1); auto x2 = (OP2);\
         if (!(x1 OP x2)) {\
-            std::cerr <<  "Assertion (" << #OP1 << " " << #OP << " " << #OP2  << ") at " << __FILE__ << ":" << __LINE__ << "\n   in " << ASSERT_FUNC << " failed.\n   Actuals [" << x1 << " " << #OP << " " << x2 << "]" << std::endl;\
+            ASSERT_STREAM <<  "Assertion (" << #OP1 << " " << #OP << " " << #OP2  << ") at " << __FILE__ << ":" << __LINE__ << "\n   in " << ASSERT_FUNC << " failed.\n   Actuals [" << x1 << " " << #OP << " " << x2 << "]" << std::endl;\
             abort();\
         }}}
 
@@ -63,7 +64,7 @@
     * @endcode
     */
     #define ASSERT_FAIL(X) {\
-        std::cerr <<  "Error at " << __FILE__ << ":" << __LINE__ << "\n   in " << ASSERT_FUNC << " failed: " << std::endl << X << std::endl; \
+        ASSERT_STREAM <<  "Error at " << __FILE__ << ":" << __LINE__ << "\n   in " << ASSERT_FUNC << " failed: " << std::endl << X << std::endl; \
         abort();\
     }
 #else

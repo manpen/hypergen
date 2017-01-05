@@ -16,6 +16,8 @@ struct Configuration {
 
     unsigned int verbosity {0};
 
+    unsigned int activeUpdateInterval {1};
+
     Coord R {-1};
 
     enum BandLimitType {BandExp, BandLin};

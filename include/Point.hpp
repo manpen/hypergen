@@ -137,8 +137,16 @@ struct Request : public Point {
         range = {phi - deltaPhi, phi + deltaPhi};
     }
 
+    Request(const Point& pt, const CoordInter& range)
+            : Point(pt), range(range)
+    {}
+
     bool operator< (const Request& o) const {
         return std::tie(range.first, id) < std::tie(o.range.first, o.id);
+    }
+
+    bool operator> (const Request& o) const {
+        return std::tie(range.first, id) > std::tie(o.range.first, o.id);
     }
 
     friend std::ostream& operator <<(std::ostream& stream, const Request& o) {

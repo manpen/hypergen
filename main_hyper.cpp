@@ -179,15 +179,13 @@ int main(int argc, char* argv[]) {
 
 // print edges
     // detect duplicates
+    Count duplicates = 0;
     {
         auto mb = myEdges.cbegin();
         auto mn = mb + 1;
 
-        Count duplicates = 0;
         for(; mn != myEdges.cend(); ++mb, ++mn)
             duplicates += (*mb == *mn);
-
-        std::cout << "Duplicates: " << duplicates << std::endl;
     }
 
 
@@ -222,8 +220,7 @@ int main(int argc, char* argv[]) {
                     numerical_issue = (std::abs(points[e.first].coshDistanceToPoincare(points[e.second]) - gen.getGeometry().coshR) /  gen.getGeometry().coshR < 1e-2);
 
                     if (config.verbosity > 2 && !numerical_issue)
-                        std::cout << " Before " << e.first << ", " << e.second << "\n "
-                                  << points[e.first] << "\n "
+                        std::cout << points[e.first] << "\n "
                                   << points[e.second] << ", "
                                   << "distance(P): " << std::setw(10) << points[e.first].distanceToPoincare(points[e.second]) << ", "
                                   << "distance(H): " << std::setw(10) << points[e.first].distanceToHyper(points[e.second]) << ", "
@@ -262,6 +259,7 @@ int main(int argc, char* argv[]) {
             " Missing(n): " << missing_num << "\n"
             " Wrong:   " << wrong << "\n"
             " Wrong(n):   " << wrong_num << "\n"
+            "Duplicates: " << duplicates << "\n"
         << std::endl;
     }
 #endif

@@ -8,12 +8,15 @@
 
 #include "Geometry.hpp"
 #include "BandSegment.hpp"
+#include "Configuration.hpp"
 
 class Segment {
 public:
     Segment(Node firstNode, Count nodes,
         CoordInter phiRange, const Geometry& geometry,
+        const Configuration& config,
         const std::vector<Coord>& limits,
+        const unsigned int firstStreamingBand,
         Seed seed
     );
 
@@ -59,9 +62,15 @@ public:
 
         unsigned int i=0;
         do {
-            //std::cout << "Advance (" << i++ << ") band " << bandIdx << " to threshold " << threshold << " in with final=" << finalize << std::endl;
+            if (_verbose) {
+                std::cout << std::string(bandIdx, ' ')
+                          << "\x1B[31m"
+                                "Advance (" << i++ << ") band " << bandIdx << " to threshold " << threshold << " in with final=" << finalize
+                          << "\x1B[39m"
+                          << std::endl;
+            }
 
-            if (i == 10000) {
+            if (i == 1000) {
                 std::cerr << "Loop ?" << std::endl;
                 abort();
             }
@@ -69,7 +78,7 @@ public:
             // Generate points. This is necessary, if the last time
             // we went outside of our allowance
             if (1) {
-                band.generatePoints(getBandAbove(bandIdx));
+                band.generatePoints();
 
                 // invoke point callback
                 if (!Endgame) {
@@ -86,20 +95,34 @@ public:
 
             // call even if there are no points, because there could be pending requests in the inbuf
             // that need to be propagated
-            band.generateEdges<Endgame, EdgeCallback>(edgeCB, getBandAbove(bandIdx), threshold);
+            band.generateEdges<Endgame, false, EdgeCallback>(edgeCB, getBandAbove(bandIdx), threshold);
 
             if (bandIdx+1 < _bands.size()) {
-                advance<Endgame>(bandIdx+1, std::min(band.nextRequestLB(), threshold), finalize, edgeCB, pointCB);
+                auto th = std::min<Coord_b>(std::min(band.nextRequestLB(), threshold), band.propagatedUntil());
+                if (finalize && band.done(threshold)) {
+                    th = threshold;
+                    band.propagate<Endgame, false>(0.0, th, getBandAbove(bandIdx));
+                }
+
+                ASSERT_GE(band.getActive().nextInsertionPending(), th);
+                advance<Endgame>(bandIdx+1, th, finalize, edgeCB, pointCB);
             }
 
         } while(finalize ? !band.done(threshold) : !band.done());
+
+        //if (finalize)
+        //    band.propagate<Endgame, false>(threshold, threshold, getBandAbove(bandIdx));
     }
 
     const CoordInter& getPhiRange() const {return _phiRange;}
 
 private:
+    static constexpr bool _verbose {VERBOSITY(true)};
+
     const Geometry _geometry;
     const CoordInter _phiRange;
+    const unsigned int _firstStreamingBand;
+    const Configuration& _config;
 
     std::vector<std::unique_ptr<BandSegment>> _bands;
 

@@ -13,7 +13,7 @@ include_directories(${Vc_INCLUDE_DIR})
 link_directories("${Vc_INCLUDE_DIR}/../lib/")
 
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++14 -fopenmp -g -march=native")
-set(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS} -fsanitize=address -fno-omit-frame-pointer -O3")
+set(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS} -fsanitize=address -fno-omit-frame-pointer -g -O0")
 
 if (${CMAKE_COMPILER_IS_GNUCXX})
     set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS} -O3 -ffast-math -DNDEBUG")
@@ -39,10 +39,7 @@ add_executable(main_hyper
     include/Generator.cpp
     include/Histogram.cpp
     include/Configuration.cpp
+    include/ActiveManager.cpp
 )
 
 target_link_libraries(main_hyper NetworKit Vc)
-
-
-#target_link_libraries(main_hyper NetworKit)
-#install(TARGETS mhyperbolic RUNTIME DESTINATION bin)

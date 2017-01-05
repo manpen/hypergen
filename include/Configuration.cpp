@@ -18,6 +18,7 @@ Configuration::Configuration(int argc, char* argv[]) {
         else if (key == "-w") { noWorker = stoi(value); }
         else if (key == "-v") { verbosity = stoi(value); }
         else if (key == "-R") { R = stod(value); }
+        else if (key == "-i") { activeUpdateInterval = stoi(value); }
 
         else if (key == "-m") {
             if (value == "l" || value == "L") {
@@ -51,17 +52,20 @@ Configuration::Configuration(int argc, char* argv[]) {
 
 void Configuration::dump() const {
     std::cout <<
-        "conf.nodes:        " << nodes         << "\n"
-        "conf.avgDegree:    " << avgDegree     << "\n"
-        "conf.degreeExp:    " << degreeExp     << "\n"
-        "conf.alpha:        " << alpha         << "\n"
-        "conf.seed:         " << seed          << "\n"
-        "conf.noWorker:     " << noWorker      << "\n"
-        "conf.noSegments:   " << noSegments    << "\n"
-        "conf.verbosity:    " << verbosity     << "\n"
-        "conf.R:            " << R             << "\n"
-        "conf.bandLimits:   " << (bandLimits == BandLimitType::BandLin ? "LIN" : "EXP") << "\n"
-        "conf.bandExpFactor:" << bandExpFactor << "\n"
-        "conf.bandLinFactor:" << bandLinFactor << "\n"
+        "conf.nodes:               " << nodes                << "\n"
+        "conf.avgDegree:           " << avgDegree            << "\n"
+        "conf.degreeExp:           " << degreeExp            << "\n"
+        "conf.alpha:               " << alpha                << "\n"
+        "conf.R:                   " << R                    << "\n\n"
+
+        "conf.seed:                " << seed                 << "\n"
+        "conf.actveUpdateInterval: " << activeUpdateInterval << "\n"
+        "conf.noWorker:            " << noWorker             << "\n"
+        "conf.noSegments:          " << noSegments           << "\n"
+        "conf.verbosity:           " << verbosity            << "\n"
+
+        "conf.bandLimits:          " << (bandLimits == BandLimitType::BandLin ? "LIN" : "EXP") << "\n"
+        "conf.bandExpFactor:       " << bandExpFactor        << "\n"
+        "conf.bandLinFactor:       " << bandLinFactor        << "\n"
     << std::endl;
 }

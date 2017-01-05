@@ -17,6 +17,12 @@
 #define CROSS_REFERENCE
 #endif
 
+#ifdef NDEBUG
+#define VERBOSITY(X) 0
+#else
+#define VERBOSITY(X) X
+#endif
+
 using Node = unsigned long int;
 using Coord = double;
 
@@ -42,7 +48,7 @@ using EdgeId = uint64_t;
 using Edge = std::pair<Node, Node>;
 
 template <typename T>
-using Interval = std::pair<T, T>;
+using Interval = std::pair<T,T>;
 
 using CoordInter = Interval<Coord_b>;
 

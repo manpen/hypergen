@@ -14,198 +14,235 @@
 #include "Assert.hpp"
 #include "Histogram.hpp"
 
+#include "ActiveManager.hpp"
+
+#include "Configuration.hpp"
+
 #include <Vc/Vc>
-#include <Vc/Allocator>
 
 //#define SKIP_DIST_COMP
 
 class BandSegment {
 public:
     BandSegment() = delete;
-    BandSegment(Node firstNode, Count nodes, CoordInter phiRange, CoordInter radRange, const Geometry& geometry, Seed seed);
+    BandSegment(Node firstNode, Count nodes,
+                CoordInter phiRange, CoordInter radRange,
+                const Geometry& geometry,
+                const Configuration& config,
+                Coord_b streamingBound,
+                Seed seed,
+                unsigned int bandIdx
+    );
 
     // produce new points and request; delete exhausted requests from _active
-    void generatePoints(BandSegment& bandAbove);
+    void generatePoints();
     void generateGlobalPoints();
-    
-    template <bool Endgame, typename EdgeCallback>
-    void generateEdges(EdgeCallback edgeCallback, BandSegment& bandAbove, Coord threshold = 2*M_PI) {
-        _checkInvariants();
-        _mergeInsertionBuffer(bandAbove);
 
-        if (_stats) {
-            _stats_data.activeSizes.addPoint( _active.size() );
+    void addRequest(const Request& req) {
+        if (_verbose > 1)
+            std::cout << "Add to band " << _bandIdx << " request " << req << std::endl;
+
+        ASSERT_LE(req.range.first, req.range.second);
+
+#ifndef NDEBUG
+        if (req.r.cosh < _streamingBound) {
+            //ASSERT_GE(req.range.first, _phiRange.first);
+            ASSERT_LE(req.range.second, _phiRange.second);
         }
 
-        if (_points.empty() || _points.front().phi > threshold) { //} _phiRange.second) {
+        if (_active.requestAlreadyPending(req)) {
+            std::cout << "Double insertion of " << req << std::endl;
+        }
+#endif
+
+        if (req.range.first < _processedUntil) {
+            std::cout << "Ignore " << req << " as before processing limit of " << _processedUntil << std::endl;
+            return;
+        }
+
+        _active.addRequest(req);
+    }
+
+    template <bool Endgame, bool GlobalPhase>
+    void propagate(Coord_b del, Coord_b ins, BandSegment& bandAbove) {
+        if (!GlobalPhase && &bandAbove != this) {
+            _active.update<Endgame>(del, ins, [&](const Request &req) {
+                auto nreq = Request(req, _geometry, _upperLimit);
+
+                if (_verbose > 2)
+                    std::cout << "Propagate " << nreq << std::endl;
+
+                if (likely(req.r.cosh >= _streamingBound)) {
+                    // streaming request which cannot be split
+                    bandAbove.addRequest(nreq);
+                } else {
+                    const auto& old_range = nreq.range;
+                    auto range = nreq.range;
+
+                    if (range.first < 0) {
+                        range.first += 2*M_PI;
+                        range.second += 2*M_PI;
+                    }
+
+                    ASSERT_LE(range.first, 2*M_PI);
+
+                    if (range.second > range.first + 2*M_PI)
+                        range.second = range.first + 2*M_PI;
+
+                    const auto width = _phiRange.second - _phiRange.first;
+
+                    if (range.second - range.first > 2*M_PI - width / 4) {
+                        bandAbove.addRequest(Request(nreq, _phiRange));
+                    } else {
+                        if ((range.first <= _phiRange.first && range.second >= _phiRange.second) ||
+                            (range.first-2*M_PI <= _phiRange.first && range.second-2*M_PI >= _phiRange.second)){
+                            // segment completely enclosed
+                            bandAbove.addRequest(Request(nreq, _phiRange));
+                        } else if (range.first >= _phiRange.first && range.second <= _phiRange.second) {
+                            // request completely enclosed
+                            bandAbove.addRequest(Request(nreq, range));
+                        } else {
+                            if (range.first >= _phiRange.first && range.first <= _phiRange.second) {
+                                bandAbove.addRequest(Request(nreq, {range.first, _phiRange.second}));
+                            }
+
+                            if (_phiRange.first <= range.second && range.second <= _phiRange.second) {
+                                bandAbove.addRequest(Request(nreq, {_phiRange.first, range.second}));
+                            } else if (_phiRange.first <= range.second - 2*M_PI && range.second - 2*M_PI <= _phiRange.second) {
+                                bandAbove.addRequest(Request(nreq, {_phiRange.first, range.second-2*M_PI}));
+                            }
+                        }
+                    }
+                }
+            });
+        } else {
+            _active.update<Endgame>(del, ins, [&](const Request &req) {});
+        }
+    }
+
+    template <bool Endgame, bool GlobalPhase = false, typename EdgeCallback>
+    void generateEdges(EdgeCallback edgeCallback, BandSegment& bandAbove, Coord threshold = 2*M_PI) {
+        // Handle active updates
+        const bool bandAboveExists = (&bandAbove != this);
+
+        auto performUpdates = [&] (Coord_b del, Coord_b ins) {
+            if (_verbose > 2)
+                std::cout << "Band " << _bandIdx << " issue active update:" << std::endl;
+
+            propagate<Endgame, GlobalPhase>(del, ins, bandAbove);
+            _propagatedUntil = ins;
+        };
+
+        if (_points.empty() || _points.front().phi > threshold) {
             _no_valid_requests = true;
             return;
         }
 
-        if (_verbose) {
-            for (const auto &pt : getPoints())
-                std::cout << " Pt:  " << pt << "\n";
-            for (const auto &r: getRequests())
-                std::cout << " Req: " << r << "\n";
-            for (const auto &r: getInsertionBuffer())
-                std::cout << " InB: " << r << "\n";
-        }
 
-        const Coord bandThreshold = _generator.nodesLeft()
-            ? (_generator.nextRequestLB() - _geometry.deltaPhi(_radRange.first, _radRange.first))
-            : _phiRange.second;
+
+        const Coord bandThreshold = _generator.nodesLeft() ? (_generator.nextRequestLB() - _maxDeltaPhi) : _phiRange.second;
         threshold = std::min(threshold, bandThreshold);
 
-        const auto upper = _AosToSoa<Endgame>(_points.front().phi, _points.back().phi);
-
-        if (!upper) {
+        if (_active.empty()) {
+            std::cout << "Active empty" << std::endl;
             _no_valid_requests = true;
             return;
         }
 
-        const auto maxNode = _firstNode + _numberOfNodes;
         _no_valid_requests = false;
-        const auto startEnd = std::upper_bound(_req_phi_start.cbegin(), _req_phi_start.cbegin() + upper, _points.back().phi,
-            [] (const Coord thresh, const Coord_v& start) {return thresh < start[0];}
-        );
-        
-        if (_verbose) {
-            std::cout << " generate edges with " 
-                        << _points.size() << " points and " 
-                        << _req_ids.size() << " requests of which " 
-                        << std::distance(_req_phi_start.cbegin(), startEnd) << " will be considered"
-            << std::endl;
-        }
 
-        auto p = _points.cbegin();
 
-        if (_stats) {
-            _stats_data.pointSizes.addPoint( std::distance(p, _points.cend() ) );
-        }
 
-#ifdef POINCARE
+        _stats_data.pointSizes.addPoint( _points.size() );
+
     #ifndef LOG_TRANSFORM
         const Coord_v threshR = static_cast<Coord_b>(_geometry.poincareR);
     #endif
-#else
-        const Coord_v threshR = static_cast<Coord_b>(_geometry.coshR);
-#endif
 
-        auto binsearch_begin = _req_phi_start.cbegin();
+        unsigned int pointIdx = 0;
 
-        for(; p != _points.cend(); ++p) {
+        auto p = _points.cbegin();
+        auto nextUpdate = p;
+        for(; p != _points.cend(); ++p,++pointIdx) {
             const Point& pt = *p;
             if (pt.phi > threshold)
                 break;
+            _processedUntil = pt.phi;
 
-            const Coord_v ptrcosh(static_cast<Coord_b>(pt.r.cosh));
-            const Coord_v ptphi(static_cast<Coord_b>(pt.phi));
-#ifdef POINCARE
-            const Coord_v poinX(static_cast<Coord_b>(pt.poinX));
-            const Coord_v poinY(static_cast<Coord_b>(pt.poinY));
-    #ifdef LOG_TRANSFORM
+            const Coord_v pt_phi(static_cast<Coord_b>(pt.phi));
+
+            const Coord_v pt_poin_x(static_cast<Coord_b>(pt.poinX));
+            const Coord_v pt_poin_y(static_cast<Coord_b>(pt.poinY));
+
+        #ifdef LOG_TRANSFORM
             const Coord_v threshR = static_cast<Coord_b>(_geometry.logPoincareR - pt.poinLogInvLen);
-    #else
-            const Coord_v poin_invr = static_cast<Coord_b>(pt.poinInvLen);
-    #endif
-#else
-            const Coord_b ptrsinh = pt.r.invsinh;
-#endif
+            const Coord_v pt_poin_r(static_cast<Coord_b>(pt.poinLogInvLen));
+        #else
+            const Coord_v pt_poin_r(static_cast<Coord_b>(pt.poinInvLen));
+        #endif
 
 #ifndef SKIP_DIST_COMP
-            while(binsearch_begin != startEnd && (*binsearch_begin)[0] < pt.phi)
-                ++binsearch_begin;
+            if (nextUpdate == p) {
+                nextUpdate = _points.cbegin() +
+                        std::min<size_t>(_points.size(), pointIdx+_config.activeUpdateInterval);
 
-            const auto this_upper = static_cast<uint32_t>(
-                    std::distance(_req_phi_start.cbegin(), binsearch_begin));
+                ASSERT_GE((nextUpdate-1)->phi, pt.phi);
 
-            if (_verbose) {
-                std::cout << "  compare point ("
-                    "id: " << pt.id << ", "
-                    "phi: " << pt.phi << ", "
-                    "r: " << std::acosh(pt.r.cosh) << ") "
-                    "with " << (this_upper) << " requests"
-                << std::endl;
+                performUpdates(pt.phi, (nextUpdate-1)->phi);
             }
 
-            const Coord_m pointFromLastSegment(!Endgame || pt.old());
+
+            Coord_m pointFromLastSegment;
+            if (Endgame)
+                pointFromLastSegment = Coord_m(pt.old());
 
             unsigned int noCandidates = 0;
             unsigned int noNeighbors = 0;
 
-            noCandidates = this_upper * _req_phi[0].size();
-
-#ifndef NDEBUG
-            auto active_iter = _active.cbegin();
-#endif
-
-            for(unsigned int i = 0; i < this_upper; ++i) {
-                auto prelimChecks =
-                           (_req_phi_stop[i] > ptphi)
-                        && (_req_phi_start[i] <= ptphi)
-                        && ((_req_cosh[i] < ptrcosh) || (_req_cosh[i] == ptrcosh && _req_phi[i] < ptphi));
+            for(unsigned int i = 0; i < _active.end(); ++i) {
+                auto prelimChecks = ((_active.req_poin_r[i] < pt_poin_r)
+                                     || (_active.req_poin_r[i] == pt_poin_r && _active.req_phi[i] < pt_phi));
                 
                 if (Endgame)
-                        prelimChecks = prelimChecks && (pointFromLastSegment || _req_old[i]);
+                    prelimChecks = prelimChecks && (pointFromLastSegment || _active.req_old[i]);
 
                 if (Statistics::enablePrelimCheck)
                     _stats_data.prelimCheck.addPoint( prelimChecks.count() );
 
-                if (prelimChecks.isEmpty()) {
+                if (prelimChecks.isEmpty())
                     continue;
-                }
-
 
                 // computations
-#ifdef POINCARE
-                const auto deltaX = _req_poin_x[i] - poinX;
-                const auto deltaY = _req_poin_y[i] - poinY;
+                const auto deltaX = _active.req_poin_x[i] - pt_poin_x;
+                const auto deltaY = _active.req_poin_y[i] - pt_poin_y;
 
                 #ifdef LOG_TRANSFORM
                 const auto dist = deltaX*deltaX + deltaY*deltaY;
-                const auto isEdge = prelimChecks && (dist < Vc::exp(threshR - _req_poin_loginvr[i]));
+                const auto isEdge = prelimChecks && (dist < Vc::exp(threshR - _active.req_poin_r[i]));
                 #else
-                const auto dist = (deltaX*deltaX + deltaY*deltaY) * _req_poin_invr[i] * poin_invr;
+                const auto dist = (deltaX*deltaX + deltaY*deltaY) * _req_poin_r[i] * poin_invr;
                 const auto isEdge = prelimChecks && (dist < threshR);
                 #endif
 
-#else
-                const auto dist = (_req_cosh[i] * ptrcosh - threshR) * (_req_invsinh[i] * ptrsinh);
-                const auto cosDist = Vc::cos(_req_phi[i] - ptphi);
-                const auto isEdge = prelimChecks && (dist < cosDist);
-#endif
-
                 _stats_data.compares += CoordPacking;
                 for(unsigned int j=0; j < isEdge.size(); ++j) {
-                    const auto & neighbor = _req_ids[i*CoordPacking + j];
+                    const auto & neighbor = _active.req_ids[i*CoordPacking + j];
+
+                    if (_verbose > 2 && _active.req_poin_r[i][j] <= _geometry.R) {
+                        std::cout << (Endgame ? "End-" : "")
+                                  << "Compare in band " << _bandIdx << " " << pt << " against " << neighbor
+                                  << " Prelim: " << prelimChecks[j] << " isEdge: " << isEdge[j]
+                                  << " " << _active.req_old[i]
+                                  << std::endl;
+                    }
+
 
                     if (isEdge[j] && pt.id != neighbor) {
-#ifndef NDEBUG
-                        while(active_iter->id != neighbor)
-                            ++active_iter;
-
-                        if (_debugSuperParanoid && (pt.coshDistanceToPoincare(*active_iter) - _geometry.coshR) / _geometry.coshR > 1e-4) {
-                            std::cerr << "pt:     " << pt << "\n"
-                                         "req:    " << *active_iter << "\n"
-                                         "req_ps: " << _req_phi_start[i][j] << "\n"
-                                         "poi:    " << pt.coshDistanceToPoincare(*active_iter) << "\n"
-                                         "hyp:    " << pt.coshDistanceToHyper(*active_iter) << "\n"
-                                         "coshR:  " << _geometry.coshR << "\n"
-                                         "j:      " << j << "\n"
-                                         "dist:   " << dist << "\n"
-                                         "thresh: " << threshR << "\n" <<
-                            std::endl;
-                            abort();
-                        }
-#endif
-
+                        ASSERT_NE(neighbor, std::numeric_limits<Node>::max());
                         edgeCallback({pt.id, neighbor});
                         _stats_data.edges++;
                         noNeighbors += Statistics::enableNeighbors;
                     }
-
-                    //if (Statistics::enableCandidates)
-                    //    noCandidates += prelimChecks[j] && pt.id != neighbor;
                 }
             }
 
@@ -214,34 +251,19 @@ public:
 #endif
         }
 
-        // remove completed requests
-        {
-            auto thresh = std::min<Coord_b>(_phiRange.second, _generator.nextPointLB());
-
-            if (p == _points.end() && thresh > _points.back().phi)
-                thresh = _points.back().phi;
-
-            if (p != _points.end() && thresh > p->phi)
-                thresh = p->phi;
-
-            if (_verbose) {
-                std::cout << "Clean up with thresh = " << thresh << std::endl;
-            }
-            const auto end = std::remove_if(_active.begin(), _active.end(),
-                                            [&] (const Request& a) {return a.range.second < thresh;});
-            _active.erase(end, _active.end());
-        }
-
         // remove complete points
         if (p == _points.cend()) {
             _points.clear();
+            if (!_generator.nodesLeft())
+                performUpdates(_phiRange.second, _phiRange.second);
+
         } else {
             _points.erase(_points.begin(), p);
         }
     }
 
     void copyGlobalState(const BandSegment& band, Coord deltaPhi);
-    Coord prepareEndgame(const BandSegment& band);
+    Coord_b prepareEndgame(const BandSegment& band);
 
     template <typename EdgeCallback>
     void endgame(EdgeCallback edgeCallback) {
@@ -251,7 +273,7 @@ public:
         _checkInvariants();
 
         // compute the active request range, i.e. the request whos range ends the latest
-        const Coord maxRange = std::max_element(_active.cbegin(), _active.cend(), [](const Request& a, const Request b) {return a.range.second < b.range.second;})->range.second;
+        const Coord maxRange = _active.maxRange();
         ASSERT_GT(maxRange, _phiRange.first);
         ASSERT_LE(maxRange, _phiRange.second);
 
@@ -290,10 +312,13 @@ public:
 
     std::vector<Point>& getPoints() {return _points;}
     const std::vector<Point>& getPoints() const {return _points;}
-    std::vector<Request>& getRequests() {return _active;}
-    const std::vector<Request>& getRequests() const {return _active;}
-    std::vector<Request>& getInsertionBuffer() {return _insertion_buffer;}
-    const std::vector<Request>& getInsertionBuffer() const {return _insertion_buffer;}
+    void sortPoints();
+
+    std::vector<Request>& getRequests() {return _requests;}
+    const std::vector<Request>& getRequests() const {return _requests;}
+
+    ActiveManager& getActive() {return _active;}
+
 
     bool done() const {
         return _no_valid_requests && !_generator.nodesLeft();
@@ -346,144 +371,48 @@ public:
         return _generator.nextRequestLB();
     }
 
+    Coord_b propagatedUntil() const {
+        return _propagatedUntil;
+    }
+
 private:
     // Geometry and Parameter
     const Node _firstNode;
     const Count _numberOfNodes;
     const Geometry& _geometry;
+    const Configuration& _config;
     const CoordInter _phiRange;
     const CoordInter _radRange;
     const SinhCosh   _upperLimit;
 
     const Count _batchSize;
+    const Coord_b _maxDeltaPhi;
+    const unsigned int _bandIdx;
 
     // Statistics
-    static constexpr bool _verbose{false};
+    static constexpr unsigned int _verbose{VERBOSITY(3)};
     static constexpr bool _stats{true};
-    static constexpr bool _debugSuperParanoid {
-#ifndef NDEBUG
-        true
-#else
-        false
-#endif
-    };
+
     Statistics _stats_data;
 
     // Generator and AoS data
     PointGenerator _generator;
 
-    std::vector<Request> _insertion_buffer;
-    std::vector<Request> _active;
     bool _no_valid_requests{false};
 
     // Internal data structures (SoA)
     std::vector<Point> _points;
+    std::vector<Request> _requests;
 
-    std::vector<Node> _req_ids;
-    std::vector<Coord_v, Vc::Allocator<Coord_v> > _req_phi;
-    std::vector<Coord_v, Vc::Allocator<Coord_v> > _req_phi_start;
-    std::vector<Coord_v, Vc::Allocator<Coord_v> > _req_phi_stop;
-    std::vector<Coord_v, Vc::Allocator<Coord_v> > _req_cosh;
-
-#ifdef POINCARE
-    std::vector<Coord_v, Vc::Allocator<Coord_v> > _req_poin_x;
-    std::vector<Coord_v, Vc::Allocator<Coord_v> > _req_poin_y;
-    #ifdef LOG_TRANSFORM
-        std::vector<Coord_v, Vc::Allocator<Coord_v> > _req_poin_loginvr;
-    #else
-        std::vector<Coord_v, Vc::Allocator<Coord_v> > _req_poin_invr;
-    #endif
-
-    #else
-    std::vector<Coord_v, Vc::Allocator<Coord_v> > _req_invsinh;
-#endif
-    std::vector<Coord_m, Vc::Allocator<Coord_m> > _req_old;
-
-    template <bool Endgame>
-    unsigned int _AosToSoa(const Coord minThresh, const Coord maxThresh) {
-        if (_active.empty())
-            return 0;
-
-        // transform AoS to SoA
-        if (_req_ids.size() < _active.size()) {
-            const size_t vectorSize = 2 * ((_active.size() + CoordPacking - 1) / CoordPacking);
-
-
-            _req_ids.resize(vectorSize * CoordPacking);
-            _req_phi.resize(vectorSize);
-            _req_phi_start.resize(vectorSize);
-            _req_phi_stop.resize(vectorSize);
-            _req_cosh.resize(vectorSize);
-
-            #ifdef POINCARE
-            _req_poin_x.resize(vectorSize);
-            _req_poin_y.resize(vectorSize);
-            #ifdef LOG_TRANSFORM
-                _req_poin_loginvr.resize(vectorSize);
-            #else
-                _req_poin_invr.resize(vectorSize);
-            #endif
-            #else
-            _req_invsinh  .resize(vectorSize);
-            #endif
-
-            if (Endgame)
-                _req_old.resize(vectorSize);
-        }
-
-        auto id_it = _req_ids.begin();
-
-        unsigned int i=0;
-        unsigned int j=0;
-
-        for(const Request& req : _active) {
-            if (req.range.second < minThresh || req.range.first > maxThresh)
-                continue;
-
-            *(id_it++) = req.id;
-            _req_phi[i][j] = req.phi;
-            _req_phi_start[i][j] = req.range.first;
-            _req_phi_stop[i][j] = req.range.second;
-#ifdef POINCARE
-            _req_poin_x[i][j]    = req.poinX;
-            _req_poin_y[i][j]    = req.poinY;
-    #ifdef LOG_TRANSFORM
-            _req_poin_loginvr[i][j] = req.poinLogInvLen;
-    #else
-            _req_poin_invr[i][j] = req.poinInvLen;
-    #endif
-#else
-            _req_invsinh[i][j] = req.r.invsinh;
-#endif
-            _req_cosh[i][j] = req.r.cosh;
-
-            if (Endgame) {
-                _req_old[i][j] = req.old();
-            }
-
-            if (++j == CoordPacking) {
-                j = 0;
-                i++;
-            }
-        }
-
-        if (j) {
-            for (; j < CoordPacking; ++j) {
-                _req_cosh[i][j] = std::numeric_limits<Coord>::max();
-                *(id_it++) = std::numeric_limits<Node>::max();
-            }
-            ++i;
-        }
-
-        return i;
-    }
-
-    void _mergeInsertionBuffer(BandSegment& bandAbove);
-    void _propagateRequests(const std::vector<Request>& reqs, BandSegment& bandAbove);
-
+    ActiveManager _active;
 
     std::vector<Request> _merge_helper;
 
+    Coord_b _propagatedUntil  {-1.0};
+    Coord_b _processedUntil {-1.0};
+
+    const bool _coverFullCircle;
+    const Coord_b _streamingBound;
 
 #ifdef NDEBUG
     void _checkInvariants() const {}
