@@ -226,13 +226,13 @@ std::vector<Coord> Generator::_computeBandLimits() const {
     std::vector<Coord> bandRadius;
 
     if (_config.bandLimits == Configuration::BandLimitType::BandLin) {
-        Coord seriesSpacing = std::log(_config.bandLinFactor) /  (_geometry.alpha + 0.5);
+        Coord seriesSpacing = _config.bandLinFactor;
         const unsigned int len = std::ceil(_geometry.R / 2 / seriesSpacing);
         seriesSpacing = _geometry.R / 2 / len;
 
         std::cout << "Use " << len << " bands with a spacing of " << seriesSpacing << std::endl;
 
-        constexpr auto baseBands = 3;
+        constexpr auto baseBands = 1;
 
         bandRadius.reserve(baseBands + len + 1);
 

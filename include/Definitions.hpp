@@ -11,7 +11,7 @@
 #define unlikely(x) __builtin_expect((x),0)
 
 #define POINCARE
-#define LOG_TRANSFORM
+//#define LOG_TRANSFORM
 
 #if !defined(NDEBUG)
 #define CROSS_REFERENCE

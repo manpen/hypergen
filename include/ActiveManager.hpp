@@ -88,8 +88,11 @@ public:
 
                 ASSERT(stop != _stops.end());
 
-                if (stop->first < req.range.second) {
+                if (stop->first < req.range.second && req.range.second > deleteLimit)  {
                     std::cout << "WARNING: Increase request size" << std::endl;
+#ifndef NDEBUG
+                    expected_size_after += stop->first < deleteLimit;
+#endif
                     stop->first = req.range.second;
                     std::make_heap(_stops.begin(), _stops.end(), _stop_comp);
                 }
@@ -259,6 +262,10 @@ public:
 
     const size_t& end() const {
         return _end;
+    }
+
+    const size_t& size() const {
+        return _size;
     }
 
     Coord_b maxRange() const {

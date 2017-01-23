@@ -156,7 +156,6 @@ public:
         _stats_data.pointSizes.addPoint( _points.size() );
 
     #ifndef LOG_TRANSFORM
-        const Coord_v threshR = static_cast<Coord_b>(_geometry.poincareR);
     #endif
 
         unsigned int pointIdx = 0;
@@ -179,6 +178,7 @@ public:
             const Coord_v pt_poin_r(static_cast<Coord_b>(pt.poinLogInvLen));
         #else
             const Coord_v pt_poin_r(static_cast<Coord_b>(pt.poinInvLen));
+            const Coord_v threshR = static_cast<Coord_b>(_geometry.poincareR / pt.poinInvLen);
         #endif
 
 #ifndef SKIP_DIST_COMP
@@ -220,7 +220,7 @@ public:
                 const auto dist = deltaX*deltaX + deltaY*deltaY;
                 const auto isEdge = prelimChecks && (dist < Vc::exp(threshR - _active.req_poin_r[i]));
                 #else
-                const auto dist = (deltaX*deltaX + deltaY*deltaY) * _req_poin_r[i] * poin_invr;
+                const auto dist = (deltaX*deltaX + deltaY*deltaY) * _active.req_poin_r[i];
                 const auto isEdge = prelimChecks && (dist < threshR);
                 #endif
 
@@ -246,7 +246,7 @@ public:
                 }
             }
 
-            _stats_data.candidates.addPoint(noCandidates);
+            _stats_data.activeSizes.addPoint(_active.size());
             _stats_data.neighbors.addPoint(noNeighbors);
 #endif
         }
@@ -330,10 +330,10 @@ public:
 
     struct Statistics {
         constexpr static bool enableHistograms { false };
-        constexpr static bool enableActiveSizes{ enableHistograms && true };
+        constexpr static bool enableActiveSizes{ !true };
         constexpr static bool enablePointSizes { enableHistograms && true };
         constexpr static bool enableCandidates { enableHistograms && true };
-        constexpr static bool enableNeighbors  { enableHistograms && true };
+        constexpr static bool enableNeighbors  { !true };
         constexpr static bool enablePrelimCheck{ enableHistograms && true };
 
         Count batches{0};

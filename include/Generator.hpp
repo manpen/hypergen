@@ -49,7 +49,30 @@ public:
 
                 {
                     ScopedTimer timer(timer_global[s]);
-                    for (unsigned int b = 0; b < _firstStreamingBand; ++b) {
+
+                    unsigned int firstRequestBand = 0;
+                    if (_config.bandLimits == Configuration::BandLimitType::BandLin) {
+                        ASSERT_GE(_bandLimits[1], _geometry.R/2);
+
+                        const auto& points = _segments[s]->getBand(0).getPoints();
+                        for(auto it = points.cbegin(); it != points.cend(); ++it) {
+                            for(auto nbr = it+1; nbr != points.cend(); ++nbr) {
+                                edgeCB({it->id, nbr->id}, s);
+                            }
+                        }
+
+                        for(auto ns=s+1; ns<_segments.size(); ++ns) {
+                            for(const auto& nbr : _segments[ns]->getBand(0).getPoints()) {
+                                for(const auto& pt : points) {
+                                    edgeCB({pt.id, nbr.id}, s);
+                                }
+                            }
+                        }
+
+                        firstRequestBand = 1;
+                    }
+
+                    for (unsigned int b = firstRequestBand; b < _firstStreamingBand; ++b) {
                         auto &band = _segments[s]->getBand(b);
 
                         if (!band.getPoints().empty())
@@ -96,57 +119,55 @@ public:
                         segment.getBand(b).getActive().update<false>(phiEnd, phiEnd, [](const Request &) {});
                     }
                 }
-            }
 
-
-            #pragma omp for
-            for (unsigned int oldSeg = 0; oldSeg < _segments.size(); ++oldSeg) {
-                ScopedTimer timer(timer_endgame[oldSeg]);
-
-                // prepare endgame
-                const auto endgameSeg = (oldSeg + 1) % _segments.size();
-
-                for (unsigned int b = _firstStreamingBand; b < noBands; ++b) {
-                    const auto &oldBand = _segments.at(oldSeg)->getBand(b);
-                    auto &endgameBand = _endgame_segments.at(endgameSeg)->getBand(b);
-
-                    const Coord maxPhi = endgameBand.prepareEndgame(oldBand);
-                    if (maxPhi > maxPhis[endgameSeg])
-                        maxPhis[endgameSeg] = maxPhi;
-
-                }
-
-                // report and assert replay width
                 {
-                    const auto width = (maxPhis[endgameSeg] - _endgame_segments[endgameSeg]->getPhiRange().first);
-                    if (_verbose) {
-                        std::cout << "Replay-width of endgameSeg id " << endgameSeg << ": " << width << ". "
-                                     "Conservative: " << _maxRepeatRange << std::endl;
-                    }
-#ifndef NDEBUG
-                    for(unsigned i=_firstStreamingBand; i<noBands; ++i) {
-                        std::cout << "Band " << i << "\n" << _endgame_segments[endgameSeg]->getBand(i).getActive() << std::endl;
-                        for(const auto& pt: _endgame_segments[endgameSeg]->getBand(i).getPoints())
-                            std::cout << pt << std::endl;
-                    }
-#endif
-                    ASSERT_LE(width, _maxRepeatRange);
-                }
+                    ScopedTimer timer(timer_endgame[s]);
 
-                // execute endgame
-                if (1) {
-                    bool finalize = true;
+                    // prepare endgame
+                    const auto endgameSeg = (s + 1) % _segments.size();
 
-                    do {
-                        finalize = !finalize;
-                        _endgame_segments[endgameSeg]->advance<true>(
-                                _firstStreamingBand,
-                                maxPhis[endgameSeg],
-                                finalize,
-                                [&](const Edge &e) { edgeCB(e, endgameSeg); },
-                                [&](const Point &p) { pointCB(p, endgameSeg); }
-                        );
-                    } while (!finalize);
+                    for (unsigned int b = _firstStreamingBand; b < noBands; ++b) {
+                        const auto &oldBand = _segments.at(s)->getBand(b);
+                        auto &endgameBand = _endgame_segments.at(endgameSeg)->getBand(b);
+
+                        const Coord maxPhi = endgameBand.prepareEndgame(oldBand);
+                        if (maxPhi > maxPhis[endgameSeg])
+                            maxPhis[endgameSeg] = maxPhi;
+
+                    }
+
+                    // report and assert replay width
+                    {
+                        const auto width = (maxPhis[endgameSeg] - _endgame_segments[endgameSeg]->getPhiRange().first);
+                        if (_verbose) {
+                            std::cout << "Replay-width of endgameSeg id " << endgameSeg << ": " << width << ". "
+                                    "Conservative: " << _maxRepeatRange << std::endl;
+                        }
+                        #ifndef NDEBUG
+                        for (unsigned i = _firstStreamingBand; i < noBands; ++i) {
+                            std::cout << "Band " << i << "\n" << _endgame_segments[endgameSeg]->getBand(i).getActive() << std::endl;
+                            for (const auto &pt: _endgame_segments[endgameSeg]->getBand(i).getPoints())
+                                std::cout << pt << std::endl;
+                        }
+                        #endif
+                        ASSERT_LE(width, _maxRepeatRange);
+                    }
+
+                    // execute endgame
+                    {
+                        bool finalize = true;
+
+                        do {
+                            finalize = !finalize;
+                            _endgame_segments[endgameSeg]->advance<true>(
+                                    _firstStreamingBand,
+                                    maxPhis[endgameSeg],
+                                    finalize,
+                                    [&](const Edge &e) { edgeCB(e, endgameSeg); },
+                                    [&](const Point &p) { pointCB(p, endgameSeg); }
+                            );
+                        } while (!finalize);
+                    }
                 }
             }
         }
