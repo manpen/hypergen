@@ -4,18 +4,20 @@
 
 #include <random>
 
+#include "Definitions.hpp"
 #include "Geometry.hpp"
 #include "Point.hpp"
 #include "Summation.hpp"
 #include "Assert.hpp"
+#include "RandomHelper.hpp"
 
 class PointGenerator {
 public:    
-    PointGenerator(Node id0, Count nodes, CoordInter phiRange, CoordInter radRange, const Geometry& geometry, Seed seed) 
+    PointGenerator(Node id0, Count nodes, CoordInter phiRange, CoordInter radRange, const Geometry& geometry, DefaultPrng rg)
         : _geometry(geometry)
         , _phiRange(phiRange)
         , _radRange(radRange)
-        , _random(seed)
+        , _random(rg)
         
         , _nodeId(id0)
         , _nodesLeft(nodes+1)
@@ -40,6 +42,23 @@ public:
     std::pair<std::vector<Point>, std::vector<Request>> generate(Count noPoints);
 
     void generate(Count noPoints, std::vector<Point>& points, std::vector<Request>& requests);
+    void generate(Count noPoints, std::vector<Point>& points);
+
+    template<typename Callback>
+    void generate(Count noPoints, Callback cb) {
+        // if the threshold is negative, we will ignore it and produce all points available
+        if (!noPoints || noPoints > _nodesLeft)
+            noPoints = _nodesLeft;
+
+        if (!noPoints)
+            return;
+
+
+        for(Count i=0; i < noPoints; ++i) {
+            cb(_nextData.first, _nextData.second);
+            _nextData = _computeNextData();
+        }
+    }
 
 
 
@@ -71,7 +90,7 @@ private:
     const CoordInter _radRange;
     const CoordInter _phiRange;
 
-    std::mt19937_64 _random;
+    DefaultPrng _random;
 
     Node  _nodeId;
     Count _nodesLeft;
@@ -92,7 +111,59 @@ private:
     // Tmp
     std::pair<Point, Request> _nextData;
     
-    std::pair<Point, Request> _computeNextData();
+
+    std::pair<Point, Request> _computeNextData() {
+        ASSERT_GT(_nodesLeft, 0);
+
+        if (!--_nodesLeft)
+            return {Point{}, Request{}};
+
+        _sumAngular.push(std::log(_distrAngular(_random)) / _nodesLeft);
+
+        const Coord phi = _paramAngular.second + _paramAngular.first * std::exp(_sumAngular.sum());
+        ASSERT_GE(phi, _phiRange.first);
+        ASSERT_LS(phi, _phiRange.second);
+
+        const Coord rad = std::acosh(_distrRad(_random) * _paramsRad.first + 1.0) * _paramsRad.second;
+        ASSERT_GE(rad, _radRange.first);
+        ASSERT_LS(rad, _radRange.second);
+
+        const SinhCosh radSC(rad);
+        ASSERT_LS(radSC.cosh, _geometry.coshR);
+
+        const Coord deltaPhi = _geometry.deltaPhi(radSC, radSC);
+
+        Point   pts(_nodeId, phi+deltaPhi, rad);
+        Request req(_nodeId, phi+deltaPhi, {phi, phi+deltaPhi+deltaPhi}, pts.r);
+
+        _nodeId++;
+
+        return {pts, req};
+    }
+
+    Point _computeNextPoint() {
+        ASSERT_GT(_nodesLeft, 0);
+
+        if (!--_nodesLeft)
+            return {};
+
+        _sumAngular.push(std::log(_distrAngular(_random)) / _nodesLeft);
+
+        const Coord phi = _paramAngular.second + _paramAngular.first * std::exp(_sumAngular.sum());
+        ASSERT_GE(phi, _phiRange.first);
+        ASSERT_LS(phi, _phiRange.second);
+
+        const Coord rad = std::acosh(_distrRad(_random) * _paramsRad.first + 1.0) * _paramsRad.second;
+        ASSERT_GE(rad, _radRange.first);
+        ASSERT_LS(rad, _radRange.second);
+
+        const SinhCosh radSC(rad);
+        ASSERT_LS(radSC.cosh, _geometry.coshR);
+
+        const Coord deltaPhi = _geometry.deltaPhi(radSC, radSC);
+
+        return {_nodeId++, phi+deltaPhi, rad};
+    }
 };
 
 #endif

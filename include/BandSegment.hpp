@@ -17,6 +17,7 @@
 #include "ActiveManager.hpp"
 
 #include "Configuration.hpp"
+#include "RandomHelper.hpp"
 
 #include <Vc/Vc>
 
@@ -26,13 +27,18 @@ class BandSegment {
 public:
     BandSegment() = delete;
     BandSegment(Node firstNode, Count nodes,
-                CoordInter phiRange, CoordInter radRange,
+                const CoordInter phiRange, CoordInter radRange,
                 const Geometry& geometry,
                 const Configuration& config,
                 Coord_b streamingBound,
                 Seed seed,
-                unsigned int bandIdx
+                unsigned int bandIdx,
+                unsigned int firstStreamingBand
     );
+
+    void enable() {
+        _generator.reset(new PointGenerator(_firstNode, _numberOfNodes, _phiRange, _radRange, _geometry, DefaultPrng{_seed}));
+    }
 
     // produce new points and request; delete exhausted requests from _active
     void generatePoints();
@@ -140,7 +146,9 @@ public:
 
 
 
-        const Coord bandThreshold = _generator.nodesLeft() ? (_generator.nextRequestLB() - _maxDeltaPhi) : _phiRange.second;
+        const Coord bandThreshold = _generator->nodesLeft()
+                                    ? (_generator->nextRequestLB() - _maxDeltaPhi)
+                                    : _phiRange.second;
         threshold = std::min(threshold, bandThreshold);
 
         if (_active.empty()) {
@@ -153,7 +161,7 @@ public:
 
 
 
-        _stats_data.pointSizes.addPoint( _points.size() );
+        //_stats_data.pointSizes.addPoint( _points.size() );
 
     #ifndef LOG_TRANSFORM
     #endif
@@ -192,9 +200,9 @@ public:
             }
 
 
-            Coord_m pointFromLastSegment;
+            bool pointFromLastSegment;
             if (Endgame)
-                pointFromLastSegment = Coord_m(pt.old());
+                pointFromLastSegment = pt.old();
 
             unsigned int noCandidates = 0;
             unsigned int noNeighbors = 0;
@@ -203,9 +211,6 @@ public:
                 auto prelimChecks = ((_active.req_poin_r[i] < pt_poin_r)
                                      || (_active.req_poin_r[i] == pt_poin_r && _active.req_phi[i] < pt_phi));
                 
-                if (Endgame)
-                    prelimChecks = prelimChecks && (pointFromLastSegment || _active.req_old[i]);
-
                 if (Statistics::enablePrelimCheck)
                     _stats_data.prelimCheck.addPoint( prelimChecks.count() );
 
@@ -230,16 +235,29 @@ public:
 
                     if (_verbose > 2 && _active.req_poin_r[i][j] <= _geometry.R) {
                         std::cout << (Endgame ? "End-" : "")
-                                  << "Compare in band " << _bandIdx << " " << pt << " against " << neighbor
+                                  << "Compare in band " << _bandIdx << " " << pt << " against " << (neighbor & Point::NODE_MASK)
                                   << " Prelim: " << prelimChecks[j] << " isEdge: " << isEdge[j]
-                                  << " " << _active.req_old[i]
+                                  << " Point-Old: " << pt.old() << " Req-Old: " << bool(neighbor & Point::OLD_MASK)
                                   << std::endl;
                     }
 
+                    bool cond = isEdge[j];
 
-                    if (isEdge[j] && pt.id != neighbor) {
+                    if (Endgame) {
+                        cond &= (pt.id & Point::NODE_MASK) != (neighbor & Point::NODE_MASK);
+                        cond &= pointFromLastSegment || (neighbor & Point::OLD_MASK);
+                    } else {
+                        cond &= pt.id != neighbor;
+                    }
+
+
+                    if (cond) {
                         ASSERT_NE(neighbor, std::numeric_limits<Node>::max());
-                        edgeCallback({pt.id, neighbor});
+                        if (Endgame)
+                            edgeCallback({pt.id & Point::NODE_MASK, neighbor & Point::NODE_MASK});
+                        else
+                            edgeCallback({pt.id, neighbor});
+
                         _stats_data.edges++;
                         noNeighbors += Statistics::enableNeighbors;
                     }
@@ -254,7 +272,7 @@ public:
         // remove complete points
         if (p == _points.cend()) {
             _points.clear();
-            if (!_generator.nodesLeft())
+            if (!_generator->nodesLeft())
                 performUpdates(_phiRange.second, _phiRange.second);
 
         } else {
@@ -263,7 +281,7 @@ public:
     }
 
     void copyGlobalState(const BandSegment& band, Coord deltaPhi);
-    Coord_b prepareEndgame(const BandSegment& band);
+    Coord_b prepareEndgame(BandSegment& band);
 
     template <typename EdgeCallback>
     void endgame(EdgeCallback edgeCallback) {
@@ -288,10 +306,7 @@ public:
             ));
 
             // generate points and discard requests
-            {
-                std::vector<Request> newRequests;
-                std::tie(_points, newRequests) = _generator.generate(batchSize);
-            }
+            _generator->generate(batchSize, _points);
 
             if (_points.empty())
                 return;
@@ -321,17 +336,17 @@ public:
 
 
     bool done() const {
-        return _no_valid_requests && !_generator.nodesLeft();
+        return _no_valid_requests && !_generator->nodesLeft();
     }
 
     bool done(const Coord thresh) const {
-        return (_points.empty() || _points.front().phi > thresh) && (!_generator.nodesLeft() || _generator.nextRequestLB() > thresh);
+        return (_points.empty() || _points.front().phi > thresh) && (!_generator->nodesLeft() || _generator->nextRequestLB() > thresh);
     }
 
     struct Statistics {
         constexpr static bool enableHistograms { false };
         constexpr static bool enableActiveSizes{ !true };
-        constexpr static bool enablePointSizes { enableHistograms && true };
+        constexpr static bool enablePointSizes { !true };
         constexpr static bool enableCandidates { enableHistograms && true };
         constexpr static bool enableNeighbors  { !true };
         constexpr static bool enablePrelimCheck{ enableHistograms && true };
@@ -368,12 +383,14 @@ public:
     }
 
     Coord nextRequestLB() const {
-        return _generator.nextRequestLB();
+        return _generator->nextRequestLB();
     }
 
     Coord_b propagatedUntil() const {
         return _propagatedUntil;
     }
+
+    void clear();
 
 private:
     // Geometry and Parameter
@@ -396,7 +413,7 @@ private:
     Statistics _stats_data;
 
     // Generator and AoS data
-    PointGenerator _generator;
+    std::unique_ptr<PointGenerator> _generator;
 
     bool _no_valid_requests{false};
 
@@ -406,13 +423,13 @@ private:
 
     ActiveManager _active;
 
-    std::vector<Request> _merge_helper;
-
     Coord_b _propagatedUntil  {-1.0};
     Coord_b _processedUntil {-1.0};
 
     const bool _coverFullCircle;
     const Coord_b _streamingBound;
+
+    const Seed _seed;
 
 #ifdef NDEBUG
     void _checkInvariants() const {}

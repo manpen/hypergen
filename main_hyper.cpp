@@ -25,6 +25,13 @@ int main(int argc, char* argv[]) {
     Configuration config(argc, argv);
 
     const auto threadsBefore = omp_get_max_threads();
+    std::cout <<
+        "sizeof(Coord): "   << sizeof(Coord) << "\n"
+        "sizeof(Node): "    << sizeof(Node) << "\n"
+        "sizeof(Point): "   << sizeof(Point) << "\n"
+        "sizeof(Request): " << sizeof(Request) << "\n"
+        "sizeof(DefaultPrng):" << sizeof(DefaultPrng) <<
+    std::endl;
 
     std::cout << "SIMD: NodePacking=" << NodePacking << " CoordPacking=" << CoordPacking << std::endl;
     {

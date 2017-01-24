@@ -35,5 +35,19 @@ protected:
     void _dump(std::ostream& stream, std::string s) const;
 };
 
+template<>
+class Histogram<false> {
+public:
+    void addPoint(Count key) {}
+
+    friend std::ostream& operator <<(std::ostream& stream, const Histogram<false>& o) {
+        return stream;
+    }
+
+    void toStream(std::ostream& stream, std::string s) const {}
+
+    Histogram operator+(const Histogram& o) const {}
+};
+
 
 #endif

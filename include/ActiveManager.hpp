@@ -6,7 +6,14 @@
 
 #include <vector>
 #include <algorithm>
+
+#define ACTIVE_MANAGER_UNORDERED
+
+#ifdef ACTIVE_MANAGER_UNORDERED
 #include <unordered_map>
+#else
+#include <map>
+#endif
 
 #include "Assert.hpp"
 #include "Definitions.hpp"
@@ -24,7 +31,7 @@ public:
     VVec<Coord_v> req_poin_y;
     VVec<Coord_v> req_poin_r;
 
-    VVec<Coord_m> req_old;
+//    VVec<Coord_m> req_old;
 
     static_assert(sizeof(Coord_v) == sizeof(Coord_b) * Coord_v::size(),
         "Unexpected padding"
@@ -39,6 +46,11 @@ public:
         std::push_heap(_starts.begin(), _starts.end(), _start_comp);
     }
 
+    ActiveManager(Node avg_degree);
+    ~ActiveManager();
+
+    void clear(bool keep_queues = false);
+
     template <bool Endgame, typename InsertCallback>
     void update(Coord_b deleteLimit, Coord_b insertLimit, InsertCallback cb = [] (const Request&) {}) {
         if (_verbose) {
@@ -47,6 +59,12 @@ public:
         }
 
         checkInvariants();
+
+        auto baseId = [] (const Node & id) {
+            if (Endgame)
+                return id & Point::NODE_MASK;
+            return id;
+        };
 
 
 
@@ -76,14 +94,14 @@ public:
                 std::cout << "Insert " << req << " at pos " << pos << std::endl;
 
             // insert into map (and reverse map)
-            auto res = _map.emplace(req.id, pos);
+            auto res = _map.emplace(baseId(req.id), pos);
             if (!res.second) {
                 // TODO: Is it worth preventing double insertions?
 #ifndef NDEBUG
                 expected_size_after--;
 #endif
-                auto stop = std::find_if(_stops.begin(), _stops.end(), [&req] (const StopMessage& msg) {
-                    return msg.second == req.id;
+                auto stop = std::find_if(_stops.begin(), _stops.end(), [&req, baseId] (const StopMessage& msg) {
+                    return msg.second == baseId(req.id);
                 });
 
                 ASSERT(stop != _stops.end());
@@ -114,13 +132,7 @@ public:
             _req_poin_r_data[pos] = req.poinInvLen;
             #endif
 
-            if (Endgame) {
-                unsigned int i = pos / Packing;
-                unsigned int j = pos % Packing;
-                req_old[i][j] = req.old();
-            }
-
-            _stops.emplace_back(req.range.second, req.id);
+            _stops.emplace_back(req.range.second, baseId(req.id));
             std::push_heap(_stops .begin(), _stops .end(), _stop_comp);
 
             return true;
@@ -132,21 +144,12 @@ public:
 
             if (target != source) {
                 req_ids[target] = req_ids[source];
-                _map[req_ids[target]] = target;
+                _map[baseId(req_ids[target])] = target;
 
                 _req_phi_data[target] = _req_phi_data[source];
                 _req_poin_x_data[target] = _req_poin_x_data[source];
                 _req_poin_y_data[target] = _req_poin_y_data[source];
                 _req_poin_r_data[target] = _req_poin_r_data[source];
-
-                if (Endgame) {
-                    unsigned int ti = target / Packing;
-                    unsigned int tj = target % Packing;
-                    unsigned int si = source / Packing;
-                    unsigned int sj = source % Packing;
-
-                    req_old[ti][tj] = req_old[si][sj];
-                }
             }
 
             // make it impossible to connect to this point
@@ -260,6 +263,9 @@ public:
                   Coord_b thresh = std::numeric_limits<Coord_b>::max()
     );
 
+    void copyFromBelow(const ActiveManager &src, const Geometry& geometry,
+                       const SinhCosh &newRad, const CoordInter phi);
+
     const size_t& end() const {
         return _end;
     }
@@ -300,7 +306,11 @@ protected:
     std::greater<Request> _start_comp;
     std::vector<Request> _starts;
 
+#ifdef ACTIVE_MANAGER_UNORDERED
     std::unordered_map<Node, unsigned int> _map;
+#else
+    std::map<Node, unsigned int> _map;
+#endif
 
     size_t _size{0};
     size_t _end{0};
@@ -318,12 +328,11 @@ protected:
         if (_size < req_ids.size())
             return;
 
-        const size_t vsize = (2*_size + Packing - 1) / Packing;
+        const size_t vsize = (3*_size + 2*Packing - 2) / 2 / Packing;
         req_phi.resize(vsize);
         req_poin_x.resize(vsize);
         req_poin_y.resize(vsize);
         req_poin_r.resize(vsize);
-        req_old.resize(vsize);
 
         req_ids.resize(vsize * Packing);
 

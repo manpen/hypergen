@@ -28,6 +28,7 @@ Generator::Generator(const Configuration& config)
                                                            config.noSegments,
                                                            _randgen);
 
+
     // print out global stats
     if (_stats) { 
         std::cout << "Number of bands: " << (_bandLimits.size()-1) << "\n"
@@ -41,29 +42,40 @@ Generator::Generator(const Configuration& config)
     }
 
     // instantiate workers
-    Node n0 = _globalNodes;
     const Coord segWidth = 2.0 * M_PI / config.noSegments;
 
     assert(segWidth > _maxRepeatRange);
 
+    _randgens.resize(config.noSegments);
+    _segments.resize(config.noSegments);
+    _endgame_segments.resize(config.noSegments);
+
+    std::vector<Node> firstNode(config.noSegments);
+    firstNode[0] = _globalNodes;
+    for(unsigned int i=0; i<config.noSegments-1; i++)
+        firstNode[i+1] = firstNode[i] + nodesPerSegment[i];
+
+    #pragma omp parallel for
     for(unsigned int s=0; s<config.noSegments; ++s) {
-        Seed seed = static_cast<Seed>(_randgen());
+        Seed seed = static_cast<Seed>(firstNode[s] * 12345678 ^ 97712327 ^ config.seed);
 
-        _segments.push_back( std::make_unique<Segment>(
-            n0, nodesPerSegment[s],
+/*        _randgens[s].reset(new DefaultPrng(
+            seed
+        )); */
+
+        _segments[s].reset(new Segment(
+            firstNode[s], nodesPerSegment[s],
             CoordInter{s*segWidth, (1+s)*segWidth},
             _geometry, _config, _bandLimits, _firstStreamingBand,
-            seed
+            seed// *_randgens[s]
         ));
 
-        _endgame_segments.push_back( std::make_unique<Segment>(
-            n0, nodesPerSegment[s],
+        _endgame_segments[s].reset(new Segment(
+            firstNode[s], nodesPerSegment[s],
             CoordInter{s*segWidth, (1+s)*segWidth},
             _geometry, _config, _bandLimits, _firstStreamingBand,
-            seed
+            seed //*_randgens[s]
         ));
-
-        n0 += nodesPerSegment[s];
     }
 
     // print out statistics
@@ -93,19 +105,6 @@ Generator::Generator(const Configuration& config)
 }
 
 void Generator::_prepareGlobalPoints() {
-    // compute all points in global section
-    std::vector<Request> requests;
-    std::vector<Point> points;
-    {
-        PointGenerator ptgen(0, _globalNodes,
-                             {0, 2 * M_PI}, {0, _bandLimits[_firstStreamingBand]},
-                             _geometry, _randgen());
-
-        ptgen.generate(_globalNodes, points, requests);
-    }
-
-
-
     // distribute points
     const Coord segWidth = (2.0*M_PI) / _segments.size();
     const Coord invSegWidth = 1.0 / segWidth;
@@ -130,80 +129,61 @@ void Generator::_prepareGlobalPoints() {
     };
 
 
+// insert the request into all segments (partially) covered by range
+    auto addRequest = [&](const CoordInter range,
+                          const Request &req,
+                          const unsigned int bandIdx) {
+        const unsigned int startSeg = range.first * invSegWidth;
+        const unsigned int stopSeg = std::min<unsigned int>(ceil(range.second * invSegWidth), _segments.size());
+        assert(startSeg <= stopSeg);
+
+        for (unsigned int s = startSeg; s != stopSeg; ++s) {
+            auto &band = _segments.at(s)->getBand(bandIdx);
+            band.addRequest(
+                    Request(req, {
+                            std::max<Coord>(range.first, band.getPhiRange().first),
+                            std::min<Coord>(range.second, band.getPhiRange().second)
+                    })
+            );
+        }
+    };
+
+    auto repairAndInsertRequest = [&](Request req, const unsigned bandIdx) {
+        // distribute to other segments
+        if (req.range.first >= 0.0 && req.range.second <= 2.0 * M_PI) {
+            addRequest(req.range, req, bandIdx);
+        } else if (req.range.second - req.range.first >= 2 * M_PI - 1e-3) {
+            addRequest({0, 2 * M_PI}, req, bandIdx);
+        } else if (req.range.first <= 0) {
+            addRequest({0, req.range.second}, req, bandIdx);
+            addRequest({2 * M_PI + req.range.first, 2 * M_PI}, req, bandIdx);
+        } else {
+            ASSERT_GT(req.range.second, 2 * M_PI);
+            addRequest({0, req.range.second - 2 * M_PI}, req, bandIdx);
+            addRequest({req.range.first, 2 * M_PI}, req, bandIdx);
+        }
+    };
+
     // Insert Points
-    {
-        for (auto &pt : points) {
-            if (pt.phi > 2 * M_PI)
-                pt.phi -= 2 * M_PI;
+    PointGenerator ptgen(0, _globalNodes,
+                         {0, 2 * M_PI}, {0, _bandLimits[_firstStreamingBand]},
+                         _geometry, _randgen);
 
-            const unsigned int seg = pt.phi * invSegWidth;
-            const unsigned int band = getBandIdx(pt);
+    ptgen.generate(_globalNodes, [&] (Point& pt, const Request&) {
+        if (pt.phi > 2 * M_PI)
+            pt.phi -= 2 * M_PI;
 
-            _segments[seg]->getBand(band).getPoints().push_back(pt);
+        const unsigned int seg = pt.phi * invSegWidth;
+        const unsigned int band = getBandIdx(pt);
+
+        if (likely(band)) {
+            repairAndInsertRequest(Request(pt, _geometry, pt.r), band);
+        } else {
+            repairAndInsertRequest(Request(pt, _geometry, bandLimits[1]), 1);
         }
 
-        for (unsigned int sIdx = 0; sIdx < _segments.size(); ++sIdx) {
-            for (unsigned int band = 0; band < _firstStreamingBand; ++band)
-                _segments[sIdx]->getBand(band).sortPoints();
-        }
-    }
-
-    // Insert Requests
-    {
-        // insert the request into all segments (partially) covered by range
-        auto addRequest = [&](const CoordInter range,
-                              const Request &req,
-                              const unsigned int bandIdx) {
-            const unsigned int startSeg = range.first * invSegWidth;
-            const unsigned int stopSeg = std::min<unsigned int>(ceil(range.second * invSegWidth), _segments.size());
-            assert(startSeg <= stopSeg);
-
-            for (unsigned int s = startSeg; s != stopSeg; ++s) {
-                auto &band = _segments.at(s)->getBand(bandIdx);
-                band.addRequest(
-                        Request(req, {
-                                std::max<Coord>(range.first, band.getPhiRange().first),
-                                std::min<Coord>(range.second, band.getPhiRange().second)
-                        })
-                );
-            }
-        };
-
-        auto repairAndInsertRequest = [&](Request req, const unsigned bandIdx) {
-            // distribute to other segments
-            if (req.range.first >= 0.0 && req.range.second <= 2.0 * M_PI) {
-                addRequest(req.range, req, bandIdx);
-            } else if (req.range.second - req.range.first >= 2 * M_PI - 1e-3) {
-                addRequest({0, 2 * M_PI}, req, bandIdx);
-            } else if (req.range.first <= 0) {
-                addRequest({0, req.range.second}, req, bandIdx);
-                addRequest({2 * M_PI + req.range.first, 2 * M_PI}, req, bandIdx);
-            } else {
-                ASSERT_GT(req.range.second, 2 * M_PI);
-                addRequest({0, req.range.second - 2 * M_PI}, req, bandIdx);
-                addRequest({req.range.first, 2 * M_PI}, req, bandIdx);
-            }
-        };
-
-        for (auto &req : requests) {
-            // iterate over all requests and distribute them to all segments involved
-            if (req.phi > 2 * M_PI)
-                req.phi -= 2 * M_PI;
-
-            const unsigned int band = getBandIdx(req);
-            repairAndInsertRequest(req, band);
-
-            for (unsigned int b = band + 1; b <= _firstStreamingBand; ++b)
-                repairAndInsertRequest(Request(req, _geometry, bandLimits[b]), b);
-        }
-    }
-
-    // copy state of first streaming band into endgame
-    for(unsigned int s=0; s < _segments.size(); s++) {
-        auto & seg = _segments[s];
-        auto& band = seg->getBand(_firstStreamingBand);
-        _endgame_segments[s]->getBand(_firstStreamingBand).copyGlobalState(band, _maxRepeatRange);
-    }
+        _segments[seg]->getBand(band).getPoints().push_back(pt);
+    });
 
     if (_stats) {
         Node cumPoints = 0;
@@ -217,7 +197,6 @@ void Generator::_prepareGlobalPoints() {
                       << " " << std::setw(10) << std::right << cumPoints
                       << std::endl;
         }
-
     }
 }
 
@@ -226,7 +205,7 @@ std::vector<Coord> Generator::_computeBandLimits() const {
     std::vector<Coord> bandRadius;
 
     if (_config.bandLimits == Configuration::BandLimitType::BandLin) {
-        Coord seriesSpacing = _config.bandLinFactor;
+        Coord seriesSpacing = std::log(_config.bandLinFactor) /  (_geometry.alpha + 0.5);
         const unsigned int len = std::ceil(_geometry.R / 2 / seriesSpacing);
         seriesSpacing = _geometry.R / 2 / len;
 

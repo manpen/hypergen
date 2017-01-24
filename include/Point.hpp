@@ -9,7 +9,7 @@
 
 struct Point {
     Node id;
-    Coord_b phi;
+    float phi;
     SinhCosh r;
 
 #ifdef POINCARE
@@ -23,8 +23,8 @@ struct Point {
 #endif
 #endif
 
-    bool _old{false};
-
+    static constexpr Node OLD_MASK  = Node(1) << (sizeof(Node)*8-1);
+    static constexpr Node NODE_MASK = ~OLD_MASK;
 
     Point() {}
 
@@ -61,11 +61,11 @@ struct Point {
     }
 
     void setOld() {
-        _old = true;
+        id |= OLD_MASK;
     }
 
     bool old() const {
-        return _old;
+        return id & OLD_MASK;
     }
 
     bool operator<(const Point& o) const {
@@ -164,5 +164,6 @@ struct Request : public Point {
         return {0, 0.0, {0.0, 0.0}, std::numeric_limits<Coord>::max()};
     }
 };
+
 
 #endif

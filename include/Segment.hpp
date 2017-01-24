@@ -9,6 +9,8 @@
 #include "Geometry.hpp"
 #include "BandSegment.hpp"
 #include "Configuration.hpp"
+#include "RandomHelper.hpp"
+
 
 class Segment {
 public:
@@ -27,6 +29,7 @@ public:
 
     const BandSegment& getBand(unsigned int i) const {
         assert(i < _bands.size());
+        assert(_bands[i]);
         return *_bands[i];
     }
 
@@ -119,13 +122,12 @@ public:
 private:
     static constexpr bool _verbose {VERBOSITY(true)};
 
-    const Geometry _geometry;
+    const Geometry& _geometry;
     const CoordInter _phiRange;
     const unsigned int _firstStreamingBand;
     const Configuration& _config;
 
     std::vector<std::unique_ptr<BandSegment>> _bands;
-
 };
 
 #endif

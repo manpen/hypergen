@@ -23,18 +23,18 @@
 #define VERBOSITY(X) X
 #endif
 
-using Node = unsigned long int;
+using Node = uint32_t; //unsigned long int;
 using Coord = double;
 
 #ifdef LOG_TRANSFORM
     using Coord_b = float;
 #else
-    using Coord_b = double;
+    using Coord_b = Coord;
 #endif
 
 using Coord_v = Vc::Vector<Coord_b>;
 using Coord_m = Vc::Mask<Coord_b>;
-using Node_b = uint64_t;
+using Node_b = uint32_t;
 using Node_v = Vc::Vector<Node_b>;
 
 

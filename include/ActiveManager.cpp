@@ -1,21 +1,48 @@
 #include "ActiveManager.hpp"
 #include "Assert.hpp"
 
+ActiveManager::ActiveManager(Node avg_degree) {
+    _size = avg_degree;
+    //_update_size();
+    _size = 0;
+}
+
+ActiveManager::~ActiveManager() {
+
+}
+
+void ActiveManager::clear(bool keep_queues) {
+    auto release = [] (auto& x) {
+        x.clear();
+        x.shrink_to_fit();
+    };
+
+    release(req_phi);
+    release(req_poin_x);
+    release(req_poin_y);
+    release(req_poin_r);
+    release(req_ids);
+
+    if (!keep_queues) {
+        release(_stops);
+        release(_starts);
+    }
+
+    _map.clear();
+
+    _size = 0;
+    _end = 0;
+}
+
 void ActiveManager::copyFrom(const ActiveManager& src, bool markOld, Coord_b thresh){
-    if (markOld) {
-        for (auto msg : src._starts) {
-            if (msg.range.first < thresh) {
-                msg.setOld();
-                _starts.push_back(msg);
-            }
-        }
-    } else {
-        for (const auto& msg : src._starts) {
-            if (msg.range.first < thresh) {
-                _starts.push_back(msg);
-            }
+    for (const auto& msg : src._starts) {
+        if (msg.range.first < thresh) {
+            _starts.push_back(msg);
+            if (markOld)
+                _starts.back().setOld();
         }
     }
+
 
     for(const auto msg : src._stops) {
         if (msg.first < thresh)
@@ -42,11 +69,49 @@ void ActiveManager::copyFrom(const ActiveManager& src, bool markOld, Coord_b thr
         std::copy(src.req_ids.cbegin(),    src.req_ids.cbegin() + _size,   req_ids.begin());
 
         if (markOld) {
-            Vc::Mask<Coord_b> tm(true);
-            for(unsigned int i=0; i<_end; i++)
-                req_old[i] = tm;
+            for(unsigned int i=0; i < _size; ++i)
+                req_ids[i] |= Point::OLD_MASK;
         }
     }
+}
+
+
+
+void ActiveManager::copyFromBelow(const ActiveManager &src, const Geometry& geometry,
+                                  const SinhCosh &newRad, const CoordInter phi) {
+    auto addRequest = [&](const CoordInter range,
+                          const Request &req) {
+        if (range.first > phi.second)
+            return;
+
+        if (range.second < phi.first)
+            return;
+
+        _starts.emplace_back(req, CoordInter{
+            std::max<Coord>(range.first, phi.first),
+            std::min<Coord>(range.second, phi.second)
+        });
+    };
+
+
+    for(const  Request& old : src._starts) {
+        Request req(old, geometry, newRad);
+
+        if (req.range.first >= 0.0 && req.range.second <= 2.0 * M_PI) {
+            addRequest(req.range, req);
+        } else if (req.range.second - req.range.first >= 2 * M_PI - 1e-3) {
+            addRequest({0, 2 * M_PI}, req);
+        } else if (req.range.first <= 0) {
+            addRequest({0, req.range.second}, req);
+            addRequest({2 * M_PI + req.range.first, 2 * M_PI}, req);
+        } else {
+            ASSERT_GT(req.range.second, 2 * M_PI);
+            addRequest({0, req.range.second - 2 * M_PI}, req);
+            addRequest({req.range.first, 2 * M_PI}, req);
+        }
+    }
+
+    std::make_heap(_starts.begin(), _starts.end(), _start_comp);
 }
 
 void ActiveManager::fixRange(Coord_b maxRange) {
@@ -77,7 +142,7 @@ void ActiveManager::fixRange(Coord_b maxRange) {
             }
 
             if (req.range.second >= maxRange) {
-                req.range.second -= 2 * M_PI;
+                req.range.second = maxRange;
             }
         }
 
@@ -117,6 +182,13 @@ void ActiveManager::checkInvariants() const {
             assigned.at(it.second) = true;
         }
     }
+
+    // no old in aux structures
+    for(const auto& it : _map)
+        ASSERT(!(it.first & Point::OLD_MASK));
+
+    for(const auto& msg : _stops)
+        ASSERT(!(msg.second & Point::OLD_MASK));
 }
 #endif
 
@@ -176,7 +248,8 @@ Coord_b ActiveManager::maxReplayRange() const {
 
     for(auto it=stops.cbegin(); it != stops.cend(); ++it) {
         const auto pos = _map.find(it->second)->second;
-        if (req_old[pos / Packing][pos % Packing]) {
+
+        if (req_ids[pos] & Point::OLD_MASK) {
             return it->first;
         }
     }

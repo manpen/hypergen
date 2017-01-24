@@ -35,7 +35,10 @@ public:
 
 
         // GLOBAL PHASE
-        _prepareGlobalPoints();
+        {
+            ScopedTimer timer("Preparation");
+            _prepareGlobalPoints();
+        }
 
         #pragma omp parallel
         {
@@ -52,18 +55,18 @@ public:
 
                     unsigned int firstRequestBand = 0;
                     if (_config.bandLimits == Configuration::BandLimitType::BandLin) {
-                        ASSERT_GE(_bandLimits[1], _geometry.R/2);
+                        ASSERT_GE(_bandLimits[1], _geometry.R / 2);
 
-                        const auto& points = _segments[s]->getBand(0).getPoints();
-                        for(auto it = points.cbegin(); it != points.cend(); ++it) {
-                            for(auto nbr = it+1; nbr != points.cend(); ++nbr) {
+                        const auto &points = _segments[s]->getBand(0).getPoints();
+                        for (auto it = points.cbegin(); it != points.cend(); ++it) {
+                            for (auto nbr = it + 1; nbr != points.cend(); ++nbr) {
                                 edgeCB({it->id, nbr->id}, s);
                             }
                         }
 
-                        for(auto ns=s+1; ns<_segments.size(); ++ns) {
-                            for(const auto& nbr : _segments[ns]->getBand(0).getPoints()) {
-                                for(const auto& pt : points) {
+                        for (auto ns = s + 1; ns < _segments.size(); ++ns) {
+                            for (const auto &nbr : _segments[ns]->getBand(0).getPoints()) {
+                                for (const auto &pt : points) {
                                     edgeCB({pt.id, nbr.id}, s);
                                 }
                             }
@@ -75,28 +78,42 @@ public:
                     for (unsigned int b = firstRequestBand; b < _firstStreamingBand; ++b) {
                         auto &band = _segments[s]->getBand(b);
 
-                        if (!band.getPoints().empty())
+                        {
+                            auto &above = _segments[s]->getBand(b + 1);
+                            above.getActive().copyFromBelow(band.getActive(), _geometry, above.getRadRange().first, band.getPhiRange());
+                        }
+
+                        if (!band.getPoints().empty()) {
+                            band.enable();
+                            band.sortPoints();
+
                             band.generateEdges<false, true>(
                                     [&](const Edge &e) { edgeCB(e, s); },
-                                    (b < _firstStreamingBand)
-                                    ? _segments[s]->getBandAbove(b)
-                                    : _segments[s]->getBand(b) // the highest global band is not supposed to propagate requests
+                                    _segments[s]->getBand(b) // the highest global band is not supposed to propagate requests
                             );
+                        }
 
-                        if (b < _firstStreamingBand)
-                            band.propagate<false, true>(band.getPhiRange().second,
-                                                        band.getPhiRange().second,
-                                                        _segments[s]->getBand(b)
-                            );
+                        band.clear();
                     }
                 }
+            }
 
+            #pragma omp for
+            for(unsigned int s=0; s < _segments.size(); ++s) {
+                _endgame_segments[s]->getBand(_firstStreamingBand).copyGlobalState(
+                        _segments[s]->getBand(_firstStreamingBand), _maxRepeatRange);
+            }
 
+            #pragma omp for
+            for(unsigned int s=0; s < _segments.size(); ++s) {
                 {
                     ScopedTimer timer(timer_main[s]);
 
                     auto &segment = *_segments[s];
                     auto &firstBand = segment.getBand(_firstStreamingBand);
+
+                    for(unsigned int b=_firstStreamingBand; b<noBands; ++b)
+                        segment.getBand(b).enable();
 
                     // the main job: recursively merge all bands
                     {
@@ -122,18 +139,21 @@ public:
 
                 {
                     ScopedTimer timer(timer_endgame[s]);
-
-                    // prepare endgame
                     const auto endgameSeg = (s + 1) % _segments.size();
 
+                    // prepare endgame
+
                     for (unsigned int b = _firstStreamingBand; b < noBands; ++b) {
-                        const auto &oldBand = _segments.at(s)->getBand(b);
+                        auto &oldBand = _segments.at(s)->getBand(b);
                         auto &endgameBand = _endgame_segments.at(endgameSeg)->getBand(b);
 
                         const Coord maxPhi = endgameBand.prepareEndgame(oldBand);
                         if (maxPhi > maxPhis[endgameSeg])
                             maxPhis[endgameSeg] = maxPhi;
 
+                        _segments.at(s)->getBand(b).clear();
+                        oldBand.clear();
+                        endgameBand.enable();
                     }
 
                     // report and assert replay width
@@ -163,8 +183,8 @@ public:
                                     _firstStreamingBand,
                                     maxPhis[endgameSeg],
                                     finalize,
-                                    [&](const Edge &e) { edgeCB(e, endgameSeg); },
-                                    [&](const Point &p) { pointCB(p, endgameSeg); }
+                                    [&](const Edge &e) { edgeCB(e, s); },
+                                    [&](const Point &p) { abort(); }
                             );
                         } while (!finalize);
                     }
@@ -215,6 +235,8 @@ private:
     
     std::vector<std::unique_ptr<Segment>> _segments;
     std::vector<std::unique_ptr<Segment>> _endgame_segments;
+
+    std::vector<std::unique_ptr<DefaultPrng>> _randgens;
 
     
     // helper functions

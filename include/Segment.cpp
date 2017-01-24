@@ -1,6 +1,5 @@
 #include "Segment.hpp"
 
-#include "RandomHelper.hpp"
 #include <cassert>
  
 Segment::Segment(Node firstNode, Count nodes, 
@@ -16,9 +15,8 @@ Segment::Segment(Node firstNode, Count nodes,
     , _config(config)
 {
     assert(!limits.empty());
-
     DefaultPrng randgen(seed);
-    
+
     // distribute the requested number of points to bands
     // according to the radial distribution function
     std::vector<Count> pointsInBand;
@@ -49,8 +47,8 @@ Segment::Segment(Node firstNode, Count nodes,
             phiRange, CoordInter{limits[i], limits[i+1]},
             _geometry, _config,
             std::cosh(limits[firstStreamingBand]),
-            static_cast<uint32_t>(randgen()),
-            i
+            randgen(),
+            i, firstStreamingBand
         ));
         n0 += pointsInBand[i];
     }
