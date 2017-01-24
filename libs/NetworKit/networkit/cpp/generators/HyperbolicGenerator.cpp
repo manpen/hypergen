@@ -38,6 +38,12 @@ namespace NetworKit {
  * Construct a generator for n nodes and m edges
  */
 HyperbolicGenerator::HyperbolicGenerator(count n, double avgDegree, double plexp, double T) {
+#ifndef HYPERBOLIC_NO_EDGES
+    INFO("WITH EDGES <--------------------------");
+#else
+	INFO("NO EDGES <--------------------------");
+#endif
+
 	nodeCount = n;
 	if (plexp <= 2) throw std::runtime_error("Exponent of power-law degree distribution must be > 2");
 	if (T < 0 || T == 1) throw std::runtime_error("Temperature must be non-negative and not 1.");//Really necessary? Graphs with T=1 can be generated, only their degree is not controllable
@@ -164,7 +170,9 @@ Graph HyperbolicGenerator::generateColdOrig(const vector<double> &angles, const 
 	Aux::Timer timer;
 	timer.start();
 	vector<double> empty;
+#ifndef HYPERBOLIC_NO_EDGES
 	GraphBuilder result(n, false, false);
+#endif
 
         uint64_t numEdges = 0;
         uint64_t numCompares = 0;
@@ -209,14 +217,22 @@ Graph HyperbolicGenerator::generateColdOrig(const vector<double> &angles, const 
 					assert(*(newend)==i);
 					near.pop_back();//std::remove doesn't remove element but swaps it to the end
 				}
+#ifndef HYPERBOLIC_NO_EDGES
 				result.swapNeighborhood(i, near, empty, false);
+#else
+                INFO("THIS MAKES NO SENSE IN NO-EDGE MODE");
+				abort();
+#endif
 			} else {
 				for (index j : near) {
 					if (j >= n) ERROR("Node ", j, " prospective neighbour of ", i, " does not actually exist. Oops.");
 					if(radii[j] > radii[i] || (radii[j] == radii[i] && angles[j] < angles[i])) {
+#ifndef HYPERBOLIC_NO_EDGES
                         result.addHalfEdge(i, j);
+#else
 						nodeAccum += i + j;
                         numEdges++;
+#endif
                     }
 				}
 			}
@@ -229,8 +245,11 @@ Graph HyperbolicGenerator::generateColdOrig(const vector<double> &angles, const 
     INFO("Node Accum ", nodeAccum);
     INFO("Produced ", numEdges, " edges");
 	INFO("Average Degree: ", 2.0 * numEdges / n);
+#ifndef HYPERBOLIC_NO_EDGES
 	return result.toGraph(!directSwap, true);
-
+#else
+    return {};
+#endif
 }
 
 

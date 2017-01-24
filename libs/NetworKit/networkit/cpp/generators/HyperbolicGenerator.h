@@ -15,6 +15,8 @@
 #include "quadtree/Quadtree.h"
 #include <utility>
 
+#include "HyperbolicBuildConfig.h"
+
 namespace NetworKit {
 
 class HyperbolicGenerator: public NetworKit::StaticGraphGenerator {
