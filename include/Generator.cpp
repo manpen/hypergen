@@ -13,7 +13,7 @@ Generator::Generator(const Configuration& config)
     , _geometry(config.nodes, config.avgDegree, config.alpha, config.R)
     , _noNodes(config.nodes)
     , _randgen(config.seed)
-    , _maxRepeatRange(2.0 * M_PI / 4 / config.noSegments)
+    , _maxRepeatRange(2.0 * M_PI / (config.noSegments < 32 ? 4.0 : 1.5) / config.noSegments)
     , _bandLimits(_computeBandLimits())
     , _firstStreamingBand(_computeFirstStreamingBand(_maxRepeatRange))
 {

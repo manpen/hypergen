@@ -62,7 +62,8 @@ public:
 #endif
 
         if (req.range.first < _processedUntil) {
-            std::cout << "Ignore " << req << " as before processing limit of " << _processedUntil << std::endl;
+            if (_verbose)
+                std::cout << "Ignore " << req << " as before processing limit of " << _processedUntil << std::endl;
             return;
         }
 
