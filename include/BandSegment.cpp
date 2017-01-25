@@ -12,7 +12,8 @@ BandSegment::BandSegment(Node firstNode, Count nodes,
                          Coord_b streamingBound,
                          Seed seed,
                          unsigned int bandIdx,
-                         unsigned int firstStreamingBand
+                         unsigned int firstStreamingBand,
+                         Statistics& stats
 )
     : _firstNode(firstNode)
     , _numberOfNodes(nodes)
@@ -29,11 +30,18 @@ BandSegment::BandSegment(Node firstNode, Count nodes,
     , _coverFullCircle(std::abs(_phiRange.second - _phiRange.first) > 2*M_PI - 1e-6)
     , _streamingBound(streamingBound)
     , _seed(seed)
+    , _stats_data(stats)
 {}
 
+template<typename T>
+static void deallocate_vector(T& v) {
+    T empty;
+    v.swap(empty);
+}
+
 void BandSegment::clear() {
-    _points.clear(); _points.shrink_to_fit();
-    _requests.clear(); _requests.shrink_to_fit();
+    deallocate_vector(_points);
+    //_requests.clear(); _requests.shrink_to_fit();
     _generator.reset(nullptr);
     _active.clear();
 }
@@ -50,14 +58,10 @@ void BandSegment::generatePoints() {
     });
     sortPoints();
 
+    _active.test_shrink();
+    if (_points.capacity() > 1.5 * _points.size())
+        _points.shrink_to_fit();
 
-    // points are in general not sorted; we do it here as a preparation for SIMD accesses
-    _no_valid_requests = _points.empty();
-}
-
-void BandSegment::generateGlobalPoints() {
-    // generate points and merge new requests into _active
-    _generator->generate(_numberOfNodes, _points, _requests);
 
     // points are in general not sorted; we do it here as a preparation for SIMD accesses
     _no_valid_requests = _points.empty();

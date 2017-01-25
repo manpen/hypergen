@@ -25,6 +25,43 @@
 
 class BandSegment {
 public:
+    struct Statistics {
+        constexpr static bool enableHistograms { false };
+        constexpr static bool enableActiveSizes{ !true };
+        constexpr static bool enablePointSizes { !true };
+        constexpr static bool enableCandidates { enableHistograms && true };
+        constexpr static bool enableNeighbors  { !true };
+        constexpr static bool enablePrelimCheck{ enableHistograms && true };
+
+        Count batches{0};
+        EdgeId edges{0};
+        EdgeId compares{0};
+
+        Histogram<enableActiveSizes> activeSizes;
+        Histogram<enablePointSizes>  pointSizes;
+        Histogram<enableCandidates>  candidates;
+        Histogram<enableNeighbors>   neighbors;
+        Histogram<enablePrelimCheck> prelimCheck;
+
+
+        Statistics operator+(const Statistics& o) const {
+            Statistics s;
+
+            s.batches    = batches    + o.batches;
+            s.activeSizes= activeSizes+ o.activeSizes;
+            s.candidates = candidates + o.candidates;
+            s.pointSizes = pointSizes + o.pointSizes;
+            s.neighbors  = neighbors  + o.neighbors;
+            s.edges      = edges      + o.edges;
+            s.compares   = compares   + o.compares;
+            s.prelimCheck= prelimCheck+ o.prelimCheck;
+
+            return s;
+        }
+    };
+
+
+
     BandSegment() = delete;
     BandSegment(Node firstNode, Count nodes,
                 const CoordInter phiRange, CoordInter radRange,
@@ -33,7 +70,8 @@ public:
                 Coord_b streamingBound,
                 Seed seed,
                 unsigned int bandIdx,
-                unsigned int firstStreamingBand
+                unsigned int firstStreamingBand,
+                Statistics& stats
     );
 
     void enable() {
@@ -42,7 +80,6 @@ public:
 
     // produce new points and request; delete exhausted requests from _active
     void generatePoints();
-    void generateGlobalPoints();
 
     void addRequest(const Request& req) {
         if (_verbose > 1)
@@ -330,9 +367,6 @@ public:
     const std::vector<Point>& getPoints() const {return _points;}
     void sortPoints();
 
-    std::vector<Request>& getRequests() {return _requests;}
-    const std::vector<Request>& getRequests() const {return _requests;}
-
     ActiveManager& getActive() {return _active;}
 
 
@@ -344,44 +378,6 @@ public:
         return (_points.empty() || _points.front().phi > thresh) && (!_generator->nodesLeft() || _generator->nextRequestLB() > thresh);
     }
 
-    struct Statistics {
-        constexpr static bool enableHistograms { false };
-        constexpr static bool enableActiveSizes{ !true };
-        constexpr static bool enablePointSizes { !true };
-        constexpr static bool enableCandidates { enableHistograms && true };
-        constexpr static bool enableNeighbors  { !true };
-        constexpr static bool enablePrelimCheck{ enableHistograms && true };
-
-        Count batches{0};
-        EdgeId edges{0};
-        EdgeId compares{0};
-
-        Histogram<enableActiveSizes> activeSizes;
-        Histogram<enablePointSizes>  pointSizes;
-        Histogram<enableCandidates>  candidates;
-        Histogram<enableNeighbors>   neighbors;
-        Histogram<enablePrelimCheck> prelimCheck;
-
-
-        Statistics operator+(const Statistics& o) const {
-            Statistics s;
-
-            s.batches    = batches    + o.batches;
-            s.activeSizes= activeSizes+ o.activeSizes;
-            s.candidates = candidates + o.candidates;
-            s.pointSizes = pointSizes + o.pointSizes;
-            s.neighbors  = neighbors  + o.neighbors;
-            s.edges      = edges      + o.edges;
-            s.compares   = compares   + o.compares;
-            s.prelimCheck= prelimCheck+ o.prelimCheck;
-
-            return s;
-        }
-    };
-
-    const Statistics& getStatistics() const {
-        return _stats_data;
-    }
 
     Coord nextRequestLB() const {
         return _generator->nextRequestLB();
@@ -411,16 +407,14 @@ private:
     static constexpr unsigned int _verbose{VERBOSITY(3)};
     static constexpr bool _stats{true};
 
-    Statistics _stats_data;
+    Statistics& _stats_data;
 
     // Generator and AoS data
     std::unique_ptr<PointGenerator> _generator;
 
     bool _no_valid_requests{false};
 
-    // Internal data structures (SoA)
     std::vector<Point> _points;
-    std::vector<Request> _requests;
 
     ActiveManager _active;
 

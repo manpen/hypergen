@@ -19,6 +19,8 @@
 #include "Definitions.hpp"
 #include "Point.hpp"
 
+
+
 class ActiveManager {
 public:
     std::vector<Node> req_ids;
@@ -294,6 +296,13 @@ public:
     void checkInvariants() const {}
 #endif
 
+    void test_shrink() {
+        constexpr auto thresh = 2;
+        if (likely(_size*thresh < req_ids.size()))
+            return;
+
+        _perform_size_update(true);
+    }
 
 protected:
     static constexpr bool _verbose {VERBOSITY(true)};
@@ -328,18 +337,32 @@ protected:
         if (_size < req_ids.size())
             return;
 
+        _perform_size_update(false);
+    }
+
+    void _perform_size_update(bool shrink) {
         const size_t vsize = (3*_size + 2*Packing - 2) / 2 / Packing;
+
         req_phi.resize(vsize);
         req_poin_x.resize(vsize);
         req_poin_y.resize(vsize);
         req_poin_r.resize(vsize);
-
         req_ids.resize(vsize * Packing);
+
+        if (shrink) {
+            req_phi.shrink_to_fit();
+            req_poin_x.shrink_to_fit();
+            req_poin_y.shrink_to_fit();
+            req_poin_r.shrink_to_fit();
+            req_ids.shrink_to_fit();
+        }
 
         _req_phi_data    = reinterpret_cast<Coord_b*>(req_phi.data());
         _req_poin_x_data = reinterpret_cast<Coord_b*>(req_poin_x.data());
         _req_poin_y_data = reinterpret_cast<Coord_b*>(req_poin_y.data());
         _req_poin_r_data = reinterpret_cast<Coord_b*>(req_poin_r.data());
     }
+
+
 };
 #endif

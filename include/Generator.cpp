@@ -59,22 +59,18 @@ Generator::Generator(const Configuration& config)
     for(unsigned int s=0; s<config.noSegments; ++s) {
         Seed seed = static_cast<Seed>(firstNode[s] * 12345678 ^ 97712327 ^ config.seed);
 
-/*        _randgens[s].reset(new DefaultPrng(
-            seed
-        )); */
-
         _segments[s].reset(new Segment(
             firstNode[s], nodesPerSegment[s],
             CoordInter{s*segWidth, (1+s)*segWidth},
             _geometry, _config, _bandLimits, _firstStreamingBand,
-            seed// *_randgens[s]
+            seed, false
         ));
 
         _endgame_segments[s].reset(new Segment(
             firstNode[s], nodesPerSegment[s],
             CoordInter{s*segWidth, (1+s)*segWidth},
             _geometry, _config, _bandLimits, _firstStreamingBand,
-            seed //*_randgens[s]
+            seed, true
         ));
     }
 
@@ -277,11 +273,16 @@ void Generator::_reportEndStats() const {
     for(unsigned int b=0; b < _bandLimits.size() - 1; ++b) {
         const BandSegment::Statistics stats =
             std::accumulate(_segments.cbegin(), _segments.cend(), BandSegment::Statistics{},
-                            [&] (const BandSegment::Statistics& s, const std::unique_ptr<Segment>& seg) {return s + seg->getBand(b).getStatistics();});
+                            [&] (const BandSegment::Statistics& s, const std::unique_ptr<Segment>& seg) {
+                                return s + seg->getStatistics(b);});
 
-        const BandSegment::Statistics eg_stats =
+        BandSegment::Statistics eg_stats;
+        if (b >= _firstStreamingBand) {
+            eg_stats =
                 std::accumulate(_endgame_segments.cbegin(), _endgame_segments.cend(), BandSegment::Statistics{},
-                                [&] (const BandSegment::Statistics& s, const std::unique_ptr<Segment>& seg) {return s + seg->getBand(b).getStatistics();});
+                                [&] (const BandSegment::Statistics& s, const std::unique_ptr<Segment>& seg) {
+                                    return s + seg->getStatistics(b);});
+        }
 
         tot_stats = tot_stats + stats + eg_stats;
 

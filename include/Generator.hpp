@@ -93,7 +93,7 @@ public:
                             );
                         }
 
-                        band.clear();
+                        _segments.at(s)->releaseBand(b);
                     }
                 }
             }
@@ -151,8 +151,8 @@ public:
                         if (maxPhi > maxPhis[endgameSeg])
                             maxPhis[endgameSeg] = maxPhi;
 
-                        _segments.at(s)->getBand(b).clear();
-                        oldBand.clear();
+                        //oldBand.clear();
+                        _segments.at(s)->releaseBand(b);
                         endgameBand.enable();
                     }
 
@@ -187,6 +187,10 @@ public:
                                     [&](const Point &p) { abort(); }
                             );
                         } while (!finalize);
+                    }
+
+                    for (unsigned int b = _firstStreamingBand; b < noBands; ++b) {
+                        _endgame_segments[endgameSeg]->releaseBand(b);
                     }
                 }
             }

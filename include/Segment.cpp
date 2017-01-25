@@ -7,7 +7,8 @@ Segment::Segment(Node firstNode, Count nodes,
         const Configuration& config,
         const std::vector<Coord>& limits,
         const unsigned int firstStreamingBand,
-        Seed seed
+        Seed seed,
+        bool streamingOnly
 ) 
     : _geometry(geometry)
     , _phiRange(phiRange)
@@ -41,15 +42,25 @@ Segment::Segment(Node firstNode, Count nodes,
 
     // instantiate an instance for each band
     Node n0 = firstNode;
+
+    _stats.resize(pointsInBand.size());
+
     for(unsigned int i=0; i < pointsInBand.size(); ++i) {
-        _bands.push_back( std::make_unique<BandSegment>(
-            n0, pointsInBand[i],
-            phiRange, CoordInter{limits[i], limits[i+1]},
-            _geometry, _config,
-            std::cosh(limits[firstStreamingBand]),
-            randgen(),
-            i, firstStreamingBand
-        ));
+        const Seed mSeed = randgen();
+
+        if (streamingOnly && i < _firstStreamingBand) {
+            _bands.push_back( std::unique_ptr<BandSegment>() );
+        } else {
+            _bands.push_back(std::make_unique<BandSegment>(
+                    n0, pointsInBand[i],
+                    phiRange, CoordInter{limits[i], limits[i + 1]},
+                    _geometry, _config,
+                    std::cosh(limits[firstStreamingBand]),
+                    mSeed,
+                    i, firstStreamingBand,
+                    _stats[i]
+            ));
+        }
         n0 += pointsInBand[i];
     }
 }

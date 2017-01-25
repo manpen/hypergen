@@ -19,11 +19,13 @@ public:
         const Configuration& config,
         const std::vector<Coord>& limits,
         const unsigned int firstStreamingBand,
-        Seed seed
+        Seed seed,
+        bool streamingOnly
     );
 
     BandSegment& getBand(unsigned int i) {
         assert(i < _bands.size());
+        assert(_bands[i]);
         return *_bands[i];
     }
 
@@ -37,6 +39,7 @@ public:
         assert(i < _bands.size());
         if (++i == _bands.size())
             i = _bands.size() - 1;
+        assert(_bands[i]);
         return *_bands[i];
     }
 
@@ -44,6 +47,7 @@ public:
         assert(i < _bands.size());
         if (++i == _bands.size())
             i = _bands.size() - 1;
+        assert(_bands[i]);
         return *_bands[i];
     }
 
@@ -119,6 +123,14 @@ public:
 
     const CoordInter& getPhiRange() const {return _phiRange;}
 
+    const BandSegment::Statistics& getStatistics(unsigned int b) const {
+        return _stats.at(b);
+    }
+
+    void releaseBand(unsigned int b) {
+        _bands[b].reset(nullptr);
+    }
+
 private:
     static constexpr bool _verbose {VERBOSITY(true)};
 
@@ -127,6 +139,7 @@ private:
     const unsigned int _firstStreamingBand;
     const Configuration& _config;
 
+    std::vector<BandSegment::Statistics> _stats;
     std::vector<std::unique_ptr<BandSegment>> _bands;
 };
 

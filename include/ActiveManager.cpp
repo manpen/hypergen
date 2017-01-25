@@ -11,24 +11,26 @@ ActiveManager::~ActiveManager() {
 
 }
 
-void ActiveManager::clear(bool keep_queues) {
-    auto release = [] (auto& x) {
-        x.clear();
-        x.shrink_to_fit();
-    };
+template<typename T>
+static void deallocate_vector(T& v) {
+    T empty;
+    v.swap(empty);
+}
 
-    release(req_phi);
-    release(req_poin_x);
-    release(req_poin_y);
-    release(req_poin_r);
-    release(req_ids);
+
+void ActiveManager::clear(bool keep_queues) {
+    deallocate_vector(req_phi);
+    deallocate_vector(req_poin_x);
+    deallocate_vector(req_poin_y);
+    deallocate_vector(req_poin_r);
+    deallocate_vector(req_ids);
 
     if (!keep_queues) {
-        release(_stops);
-        release(_starts);
+        deallocate_vector(_stops);
+        deallocate_vector(_starts);
     }
 
-    _map.clear();
+    deallocate_vector(_map);
 
     _size = 0;
     _end = 0;
