@@ -168,12 +168,12 @@ else:
 	with open(confPath, "w") as f:
 		conf.write(f)
 
-env.Append(LINKFLAGS = ["-std={}".format(stdflag)])
+env.Append(LINKFLAGS = ["-std={0}".format(stdflag)])
 
 ## CONFIGURATIONS
 
 commonCFlags = ["-c", "-fmessage-length=0", "-std=c99", "-fPIC"]
-commonCppFlags = ["-std={}".format(stdflag), "-Wall", "-c", "-fmessage-length=0", "-fPIC", "-fdiagnostics-color=always", "-g"]
+commonCppFlags = ["-std={0}".format(stdflag), "-Wall", "-c", "-fmessage-length=0", "-fPIC", "-fdiagnostics-color=always", "-g"]
 
 debugCppFlags = ["-O0", "-g3", "-DLOG_LEVEL=LOG_LEVEL_TRACE"]
 debugCFlags = ["-O0", "-g3"]

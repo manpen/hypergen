@@ -12,7 +12,7 @@ message("VC Flags: ${Vc_ALL_FLAGS}")
 include_directories(${Vc_INCLUDE_DIR})
 link_directories("${Vc_INCLUDE_DIR}/../lib/")
 
-set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++14 -fopenmp -g -march=native")
+set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++14 -fopenmp -march=native")
 set(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS} -fsanitize=address -fno-omit-frame-pointer -g -O0")
 
 if (${CMAKE_COMPILER_IS_GNUCXX})
@@ -23,8 +23,6 @@ elseif("${CMAKE_CXX_COMPILER_ID}" STREQUAL "Intel")
     set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -use-gen -prof-dir=./profiler")
 endif()
 
-
-add_executable(mhyperbolic main.cpp)
 
 add_executable(benchmark_networkit benchmark_networkit.cpp)
 target_link_libraries(benchmark_networkit NetworKitNoEdges)
@@ -42,4 +40,4 @@ add_executable(main_hyper
     include/ActiveManager.cpp
 )
 
-target_link_libraries(main_hyper NetworKit Vc)
+target_link_libraries(main_hyper  NetworKit Vc)

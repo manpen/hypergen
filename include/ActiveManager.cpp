@@ -1,3 +1,25 @@
+/**
+ * @file
+ * @brief Implementation of ActiveManager
+ *
+ * @author Manuel Penschuck
+ * @copyright
+ * Copyright (C) 2017 Manuel Penschuck
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+ *
+ * @copyright
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * @copyright
+ * You should have received a copy of the GNU General Public License
+ * along with this program.  If not, see <http://www.gnu.org/licenses/>.
+ */
 #include "ActiveManager.hpp"
 #include "Assert.hpp"
 
@@ -19,11 +41,11 @@ static void deallocate_vector(T& v) {
 
 
 void ActiveManager::clear(bool keep_queues) {
-    deallocate_vector(req_phi);
-    deallocate_vector(req_poin_x);
-    deallocate_vector(req_poin_y);
-    deallocate_vector(req_poin_r);
-    deallocate_vector(req_ids);
+    deallocate_vector(_req_phi);
+    deallocate_vector(_req_poin_x);
+    deallocate_vector(_req_poin_y);
+    deallocate_vector(_req_poin_r);
+    deallocate_vector(_req_ids);
 
     if (!keep_queues) {
         deallocate_vector(_stops);
@@ -64,15 +86,15 @@ void ActiveManager::copyFrom(const ActiveManager& src, bool markOld, Coord_b thr
         _end = src._end;
         _update_size();
 
-        std::copy(src.req_phi.cbegin(),    src.req_phi.cbegin() + _end,    req_phi.begin());
-        std::copy(src.req_poin_x.cbegin(), src.req_poin_x.cbegin() + _end, req_poin_x.begin());
-        std::copy(src.req_poin_y.cbegin(), src.req_poin_y.cbegin() + _end, req_poin_y.begin());
-        std::copy(src.req_poin_r.cbegin(), src.req_poin_r.cbegin() + _end, req_poin_r.begin());
-        std::copy(src.req_ids.cbegin(),    src.req_ids.cbegin() + _size,   req_ids.begin());
+        std::copy(src._req_phi.cbegin(),    src._req_phi.cbegin() + _end,    _req_phi.begin());
+        std::copy(src._req_poin_x.cbegin(), src._req_poin_x.cbegin() + _end, _req_poin_x.begin());
+        std::copy(src._req_poin_y.cbegin(), src._req_poin_y.cbegin() + _end, _req_poin_y.begin());
+        std::copy(src._req_poin_r.cbegin(), src._req_poin_r.cbegin() + _end, _req_poin_r.begin());
+        std::copy(src._req_ids.cbegin(),    src._req_ids.cbegin() + _size,   _req_ids.begin());
 
         if (markOld) {
             for(unsigned int i=0; i < _size; ++i)
-                req_ids[i] |= Point::OLD_MASK;
+                _req_ids[i] |= Point::OLD_MASK;
         }
     }
 }
@@ -251,7 +273,7 @@ Coord_b ActiveManager::maxReplayRange() const {
     for(auto it=stops.cbegin(); it != stops.cend(); ++it) {
         const auto pos = _map.find(it->second)->second;
 
-        if (req_ids[pos] & Point::OLD_MASK) {
+        if (_req_ids[pos] & Point::OLD_MASK) {
             return it->first;
         }
     }

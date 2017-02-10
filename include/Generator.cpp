@@ -1,3 +1,25 @@
+/**
+ * @file
+ * @brief Implementation of Generator
+ *
+ * @author Manuel Penschuck
+ * @copyright
+ * Copyright (C) 2017 Manuel Penschuck
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+ *
+ * @copyright
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * @copyright
+ * You should have received a copy of the GNU General Public License
+ * along with this program.  If not, see <http://www.gnu.org/licenses/>.
+ */
 #include "Generator.hpp"
 #include "RandomHelper.hpp"
 
@@ -319,37 +341,3 @@ void Generator::_reportEndStats() const {
     tot_stats.neighbors.toStream(std::cout, "HIST-TOT-NBR");
     tot_stats.prelimCheck.toStream(std::cout, "HIST-PRE-CHK");
 }
-
-void Generator::_dumpAllPointsAndRequests(const std::vector<std::unique_ptr<Segment>>& segments, const std::string key) const {
-    if (!_verbose)
-        return;
-/*
-    for(unsigned int s=0; s<segments.size(); ++s) {
-        std::cout << key << " Segment " << s << std::endl;
-        for(unsigned int b=0; b <  _bandLimits.size()-1; ++b) {
-            std::cout << key << " | Band " << b << std::endl;
-            for(const auto& p : segments[s]->getBand(b).getPoints())
-                std::cout << key << " | | " << p << std::endl;
-            
-            
-            const auto& r1 = segments[s]->getBand(b).getRequests();
-            const auto& r2 = segments[s]->getBand(b).getInsertionBuffer();
-
-            auto i1 = r1.cbegin();
-            auto i2 = r2.cbegin();
-
-            while(i1 != r1.cend() || i2 != r2.cend()) {
-                if (i1 == r1.cend() || (i2 != r2.cend() && *i2 < *i1)) {
-                    std::cout << key << " | | InBu: " << *i2 << std::endl;
-                    i2++;
-                } else {
-                    std::cout << key << " | | Reqs: " << *i1 << std::endl;
-                    i1++;
-                }
-            }
-        }
-    }
-*/
-}
-
-

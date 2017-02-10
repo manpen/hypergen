@@ -1,3 +1,29 @@
+/**
+ * @file
+ * @brief Summation
+ *
+ * Sample implementation of HyperGen. If CROSS_REFERENCE is defined,
+ * the points received are fed to the NetworKIT generator and results
+ * are compared. SLOW!
+ *
+ * @author Manuel Penschuck
+ * @copyright
+ * Copyright (C) 2017 Manuel Penschuck
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+ *
+ * @copyright
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * @copyright
+ * You should have received a copy of the GNU General Public License
+ * along with this program.  If not, see <http://www.gnu.org/licenses/>.
+ */
 #include <iostream>
 #include <omp.h>
 
@@ -22,6 +48,13 @@
 
 
 int main(int argc, char* argv[]) {
+    std::cout <<
+        "main_hyper  Copyright (C) 2017 Manuel Penschuck\n"
+        "This program comes with ABSOLUTELY NO WARRANTY;\n"
+        "This is free software, and you are welcome to redistribute it\n"
+        "under certain conditions\n"
+    << std::endl;
+
     Configuration config(argc, argv);
 
     const auto threadsBefore = omp_get_max_threads();
@@ -263,9 +296,9 @@ int main(int argc, char* argv[]) {
             " Ex: " << static_cast<EdgeId>(config.avgDegree*config.nodes/2) << "\n"
             " Matches:    " << matches << "\n"
             " Missing:    " << missing << "\n"
-            " Missing(n): " << missing_num << "\n"
+            " Missing(numerical issues): " << missing_num << "\n"
             " Wrong:   " << wrong << "\n"
-            " Wrong(n):   " << wrong_num << "\n"
+            " Wrong(issues issues):   " << wrong_num << "\n"
             "Duplicates: " << duplicates << "\n"
         << std::endl;
     }
@@ -273,4 +306,3 @@ int main(int argc, char* argv[]) {
 
     return 0;
 }
-

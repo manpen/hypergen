@@ -1,3 +1,28 @@
+/**
+ * @file
+ * @brief ActiveManager
+ *
+ * The active manager receives requests and compute the current set
+ * of canditates, i.e. requests that are active in an given interval.
+ *
+ * @author Manuel Penschuck
+ * @copyright
+ * Copyright (C) 2017 Manuel Penschuck
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+ *
+ * @copyright
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * @copyright
+ * You should have received a copy of the GNU General Public License
+ * along with this program.  If not, see <http://www.gnu.org/licenses/>.
+ */
 #pragma once
 #ifndef ACTIVE_MANAGER_HPP
 #define ACTIVE_MANAGER_HPP
@@ -23,15 +48,12 @@
 
 class ActiveManager {
 public:
-    std::vector<Node> req_ids;
+    const Coord_v& req_phi(unsigned int i) const {return _req_phi[i];}
+    const Coord_v& req_poin_x(unsigned int i) const {return _req_poin_x[i];}
+    const Coord_v& req_poin_y(unsigned int i) const {return _req_poin_y[i];}
+    const Coord_v& req_poin_r(unsigned int i) const {return _req_poin_r[i];}
+    const Node& req_id(unsigned int i) const {return _req_ids[i];}
 
-    template<typename T>
-    using VVec = std::vector<T, Vc::Allocator<T> >;
-
-    VVec<Coord_v> req_phi;
-    VVec<Coord_v> req_poin_x;
-    VVec<Coord_v> req_poin_y;
-    VVec<Coord_v> req_poin_r;
 
 //    VVec<Coord_m> req_old;
 
@@ -124,7 +146,7 @@ public:
             }
 
             // copy data
-            req_ids[pos] = req.id;
+            _req_ids[pos] = req.id;
             _req_phi_data[pos] = req.phi;
             _req_poin_x_data[pos] = req.poinX;
             _req_poin_y_data[pos] = req.poinY;
@@ -145,8 +167,8 @@ public:
                 std::cout << "Shift remove " << source << " -> " << target << std::endl;
 
             if (target != source) {
-                req_ids[target] = req_ids[source];
-                _map[baseId(req_ids[target])] = target;
+                _req_ids[target] = _req_ids[source];
+                _map[baseId(_req_ids[target])] = target;
 
                 _req_phi_data[target] = _req_phi_data[source];
                 _req_poin_x_data[target] = _req_poin_x_data[source];
@@ -157,7 +179,7 @@ public:
             // make it impossible to connect to this point
             _req_poin_r_data[source] = std::numeric_limits<Coord_b>::max();
 #ifndef NDEBUG
-            req_ids[source] = std::numeric_limits<Node>::max();
+            _req_ids[source] = std::numeric_limits<Node>::max();
 #endif
         };
 
@@ -238,7 +260,7 @@ public:
         for(unsigned int i=_size; i < _end * Packing; ++i) {
             _req_poin_r_data[i] = std::numeric_limits<Coord_b>::max();
 #ifndef NDEBUG
-            req_ids[i] = std::numeric_limits<Node>::max();
+            _req_ids[i] = std::numeric_limits<Node>::max();
 #endif
         }
 
@@ -276,6 +298,10 @@ public:
         return _size;
     }
 
+    const size_t requestsPending() const {
+        return _starts.size();
+    }
+
     Coord_b maxRange() const {
         if (unlikely(_stops.empty()))
             return std::numeric_limits<Coord_b>::min();
@@ -298,7 +324,7 @@ public:
 
     void test_shrink() {
         constexpr auto thresh = 2;
-        if (likely(_size*thresh < req_ids.size()))
+        if (likely(_size*thresh < _req_ids.size()))
             return;
 
         _perform_size_update(true);
@@ -327,6 +353,16 @@ protected:
     Coord_b _last_delete {0.0};
     Coord_b _last_insert {0.0};
 
+    std::vector<Node> _req_ids;
+
+    template<typename T>
+    using VVec = std::vector<T, Vc::Allocator<T> >;
+
+    VVec<Coord_v> _req_phi;
+    VVec<Coord_v> _req_poin_x;
+    VVec<Coord_v> _req_poin_y;
+    VVec<Coord_v> _req_poin_r;
+
 
     Coord_b* _req_phi_data;
     Coord_b* _req_poin_x_data;
@@ -334,7 +370,7 @@ protected:
     Coord_b* _req_poin_r_data;
 
     void _update_size() {
-        if (_size < req_ids.size())
+        if (_size < _req_ids.size())
             return;
 
         _perform_size_update(false);
@@ -343,24 +379,24 @@ protected:
     void _perform_size_update(bool shrink) {
         const size_t vsize = (3*_size + 2*Packing - 2) / 2 / Packing;
 
-        req_phi.resize(vsize);
-        req_poin_x.resize(vsize);
-        req_poin_y.resize(vsize);
-        req_poin_r.resize(vsize);
-        req_ids.resize(vsize * Packing);
+        _req_phi.resize(vsize);
+        _req_poin_x.resize(vsize);
+        _req_poin_y.resize(vsize);
+        _req_poin_r.resize(vsize);
+        _req_ids.resize(vsize * Packing);
 
         if (shrink) {
-            req_phi.shrink_to_fit();
-            req_poin_x.shrink_to_fit();
-            req_poin_y.shrink_to_fit();
-            req_poin_r.shrink_to_fit();
-            req_ids.shrink_to_fit();
+            _req_phi.shrink_to_fit();
+            _req_poin_x.shrink_to_fit();
+            _req_poin_y.shrink_to_fit();
+            _req_poin_r.shrink_to_fit();
+            _req_ids.shrink_to_fit();
         }
 
-        _req_phi_data    = reinterpret_cast<Coord_b*>(req_phi.data());
-        _req_poin_x_data = reinterpret_cast<Coord_b*>(req_poin_x.data());
-        _req_poin_y_data = reinterpret_cast<Coord_b*>(req_poin_y.data());
-        _req_poin_r_data = reinterpret_cast<Coord_b*>(req_poin_r.data());
+        _req_phi_data    = reinterpret_cast<Coord_b*>(_req_phi.data());
+        _req_poin_x_data = reinterpret_cast<Coord_b*>(_req_poin_x.data());
+        _req_poin_y_data = reinterpret_cast<Coord_b*>(_req_poin_y.data());
+        _req_poin_r_data = reinterpret_cast<Coord_b*>(_req_poin_r.data());
     }
 
 

@@ -1,10 +1,32 @@
+/**
+ * @file
+ * @brief Implementation of Geometry
+ *
+ * @author Manuel Penschuck
+ * @copyright
+ * Copyright (C) 2017 Manuel Penschuck
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+ *
+ * @copyright
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * @copyright
+ * You should have received a copy of the GNU General Public License
+ * along with this program.  If not, see <http://www.gnu.org/licenses/>.
+ */
 #include "Geometry.hpp"
 #include <cmath>
 #include <cassert>
 #include <iostream>
 
-// borrowed from NetworKit
 Coord Geometry::_computeTargetRadius(const Count n, const Coord avgDeg, const Coord alpha) const {
+    // algorithm adopted from NetworKIT
     const double gamma = 2*alpha+1;
     const double xi = (gamma-1)/(gamma-2);
     const double xiInv = ((gamma-2)/(gamma-1));
@@ -28,13 +50,6 @@ Coord Geometry::_computeTargetRadius(const Count n, const Coord avgDeg, const Co
         currentR = (lowerBound + upperBound)/2;
         const double currentK = getExpectedDegree(currentR, alpha, n);
         currentDev = std::abs(getExpectedDegree(currentR, alpha, n) / avgDeg - 1.0);
-
-        if (0) {
-            std::cout << "ComputeTargetRadius " << iteration
-                      << " CurrentR: " << currentR
-                      << " CurrentK: " << currentK
-                      << " Eps: " << currentDev << std::endl;
-        }
 
         if (iteration > 100) {
             std::cerr << "[WARNING] ComputeTargetRadius seems not to converge; use current value" << std::endl;

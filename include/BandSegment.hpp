@@ -1,3 +1,29 @@
+/**
+ * @file
+ * @brief BandSegment
+ *
+ * A band segment generates random points and requests, performs
+ * distance calculation and propagates requests.
+ *
+ * @author Manuel Penschuck
+ * @copyright
+ * Copyright (C) 2017 Manuel Penschuck
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+ *
+ * @copyright
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * @copyright
+ * You should have received a copy of the GNU General Public License
+ * along with this program.  If not, see <http://www.gnu.org/licenses/>.
+ */
+
 #pragma once
 #ifndef BAND_SEGMENT_HPP
 #define BAND_SEGMENT_HPP
@@ -26,12 +52,12 @@
 class BandSegment {
 public:
     struct Statistics {
-        constexpr static bool enableHistograms { false };
-        constexpr static bool enableActiveSizes{ !true };
-        constexpr static bool enablePointSizes { !true };
-        constexpr static bool enableCandidates { enableHistograms && true };
-        constexpr static bool enableNeighbors  { !true };
-        constexpr static bool enablePrelimCheck{ enableHistograms && true };
+        constexpr static bool enableHistograms { true };
+        constexpr static bool enableActiveSizes{ true && enableHistograms};
+        constexpr static bool enablePointSizes { true && enableHistograms };
+        constexpr static bool enableCandidates { true && enableHistograms};
+        constexpr static bool enableNeighbors  { !true && enableHistograms };
+        constexpr static bool enablePrelimCheck{ !true && enableHistograms };
 
         Count batches{0};
         EdgeId edges{0};
@@ -40,6 +66,7 @@ public:
         Histogram<enableActiveSizes> activeSizes;
         Histogram<enablePointSizes>  pointSizes;
         Histogram<enableCandidates>  candidates;
+
         Histogram<enableNeighbors>   neighbors;
         Histogram<enablePrelimCheck> prelimCheck;
 
@@ -197,12 +224,8 @@ public:
 
         _no_valid_requests = false;
 
+        _stats_data.pointSizes.addPoint( _points.size() );
 
-
-        //_stats_data.pointSizes.addPoint( _points.size() );
-
-    #ifndef LOG_TRANSFORM
-    #endif
 
         unsigned int pointIdx = 0;
 
@@ -227,6 +250,9 @@ public:
             const Coord_v threshR = static_cast<Coord_b>(_geometry.poincareR / pt.poinInvLen);
         #endif
 
+        _stats_data.pointSizes.addPoint( _points.size() );
+
+
 #ifndef SKIP_DIST_COMP
             if (nextUpdate == p) {
                 nextUpdate = _points.cbegin() +
@@ -237,6 +263,8 @@ public:
                 performUpdates(pt.phi, (nextUpdate-1)->phi);
             }
 
+            _stats_data.activeSizes.addPoint( _active.requestsPending() );
+            _stats_data.candidates.addPoint( _active.size() );
 
             bool pointFromLastSegment;
             if (Endgame)
@@ -246,8 +274,8 @@ public:
             unsigned int noNeighbors = 0;
 
             for(unsigned int i = 0; i < _active.end(); ++i) {
-                auto prelimChecks = ((_active.req_poin_r[i] < pt_poin_r)
-                                     || (_active.req_poin_r[i] == pt_poin_r && _active.req_phi[i] < pt_phi));
+                auto prelimChecks = ((_active.req_poin_r(i) < pt_poin_r)
+                                     || (_active.req_poin_r(i) == pt_poin_r && _active.req_phi(i) < pt_phi));
                 
                 if (Statistics::enablePrelimCheck)
                     _stats_data.prelimCheck.addPoint( prelimChecks.count() );
@@ -256,22 +284,22 @@ public:
                     continue;
 
                 // computations
-                const auto deltaX = _active.req_poin_x[i] - pt_poin_x;
-                const auto deltaY = _active.req_poin_y[i] - pt_poin_y;
+                const auto deltaX = _active.req_poin_x(i) - pt_poin_x;
+                const auto deltaY = _active.req_poin_y(i) - pt_poin_y;
 
                 #ifdef LOG_TRANSFORM
                 const auto dist = deltaX*deltaX + deltaY*deltaY;
-                const auto isEdge = prelimChecks && (dist < Vc::exp(threshR - _active.req_poin_r[i]));
+                const auto isEdge = prelimChecks && (dist < Vc::exp(threshR - _active.req_poin_r(i)));
                 #else
-                const auto dist = (deltaX*deltaX + deltaY*deltaY) * _active.req_poin_r[i];
+                const auto dist = (deltaX*deltaX + deltaY*deltaY) * _active.req_poin_r(i);
                 const auto isEdge = prelimChecks && (dist < threshR);
                 #endif
 
                 _stats_data.compares += CoordPacking;
                 for(unsigned int j=0; j < isEdge.size(); ++j) {
-                    const auto & neighbor = _active.req_ids[i*CoordPacking + j];
+                    const auto & neighbor = _active.req_id(i*CoordPacking + j);
 
-                    if (_verbose > 2 && _active.req_poin_r[i][j] <= _geometry.R) {
+                    if (_verbose > 2 && _active.req_poin_r(i)[j] <= _geometry.R) {
                         std::cout << (Endgame ? "End-" : "")
                                   << "Compare in band " << _bandIdx << " " << pt << " against " << (neighbor & Point::NODE_MASK)
                                   << " Prelim: " << prelimChecks[j] << " isEdge: " << isEdge[j]
@@ -302,7 +330,6 @@ public:
                 }
             }
 
-            _stats_data.activeSizes.addPoint(_active.size());
             _stats_data.neighbors.addPoint(noNeighbors);
 #endif
         }
