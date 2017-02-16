@@ -43,8 +43,6 @@ class Generator {
 public:
     Generator(const Configuration& config);
     Generator(const Generator& g) = default;
-
-    
     
     template<typename EdgeCallback, typename PointCallback>
     void generate(EdgeCallback edgeCB, 

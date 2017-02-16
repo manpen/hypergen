@@ -52,7 +52,7 @@
 class BandSegment {
 public:
     struct Statistics {
-        constexpr static bool enableHistograms { true };
+        constexpr static bool enableHistograms { false };
         constexpr static bool enableActiveSizes{ true && enableHistograms};
         constexpr static bool enablePointSizes { true && enableHistograms };
         constexpr static bool enableCandidates { true && enableHistograms};
@@ -253,7 +253,6 @@ public:
         _stats_data.pointSizes.addPoint( _points.size() );
 
 
-#ifndef SKIP_DIST_COMP
             if (nextUpdate == p) {
                 nextUpdate = _points.cbegin() +
                         std::min<size_t>(_points.size(), pointIdx+_config.activeUpdateInterval);
@@ -266,6 +265,7 @@ public:
             _stats_data.activeSizes.addPoint( _active.requestsPending() );
             _stats_data.candidates.addPoint( _active.size() );
 
+#ifndef SKIP_DIST_COMP
             bool pointFromLastSegment;
             if (Endgame)
                 pointFromLastSegment = pt.old();
