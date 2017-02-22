@@ -33,7 +33,7 @@ get fixed in the future.
 
 # Running the Experiments
 In order to compare HyperGen, NkGen and NkGenOpt you can run our invokation script.
-The analsys scripts require Python3 and a couple of modules. On Ubuntu they may be
+The analysis scripts require Python3 and a couple of modules. On Ubuntu they may be
 installed using the following command:
 
 ```
@@ -48,10 +48,10 @@ cd build_gcc
 python3 ../experiments/run_experiments.py
 ```
 
-In the current setting, the module will record repeatitions for each data point
+In the current setting, the module will record five repetitions for each data point
 and store the results in a "data"-folder in the root of this repository.
 
-WARNING: We limited the number of nodes produce by NkGen/NkGen-Opt using the
+WARNING: We limited the number of nodes produced by NkGen/NkGen-Opt using the
 MAX_NO_NODES flag in the header of the script to enable experiments on machines
 with (comparably) small main memory.
 
