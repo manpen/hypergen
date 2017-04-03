@@ -1,3 +1,6 @@
 [submodule "libs/Vc"]
 	path = libs/Vc
 	url = https://github.com/VcDevel/Vc.git
+[submodule "related_work/girg"]
+	path = related_work/girg
+	url = https://bitbucket.org/HaiZhung/hyperbolic-embedder.git
