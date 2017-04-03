@@ -27,7 +27,7 @@
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
 import subprocess, os, sys
-from math import exp, pi
+from math import exp, pi, log
 import multiprocessing
 import socket
 import itertools
@@ -37,6 +37,47 @@ import random
 MAX_NO_EDGES = int(1e12)
 MAX_NO_NODES = int(1e8)
 iterations = 5
+
+def getExpectedDegree(n, R, alpha):
+    gamma = 2*alpha+1
+    xi = (gamma-1)/(gamma-2)
+    firstSumTerm = exp(-R/2)
+    secondSumTerm = exp(-alpha*R)*(alpha*(R/2)*((pi/4)*pow((1/alpha),2)-(pi-1)*(1/alpha)+(pi-2))-1)
+    return (2 / pi) * n * xi * xi *(firstSumTerm + secondSumTerm)
+
+def getTargetRadius(n, alpha, avgDeg):
+    gamma = 2*alpha+1
+    xi = (gamma-1)/(gamma-2)
+    xiInv = ((gamma-2)/(gamma-1))
+    v = avgDeg * (pi/2)*xiInv*xiInv
+
+    epsilon = 1e-10
+
+    currentR = 2.0*log(n / v)
+    lowerBound = currentR/2
+    upperBound = currentR*2
+
+    assert(getExpectedDegree(n, lowerBound, alpha) > avgDeg)
+    assert(getExpectedDegree(n, upperBound, alpha) < avgDeg)
+
+    currentDev = 2*epsilon
+
+    for iteration in range(100):
+        currentR = (lowerBound + upperBound)/2
+        currentK = getExpectedDegree(n, currentR, alpha)
+        currentDev = abs(getExpectedDegree(n, currentR, alpha) / avgDeg - 1.0)
+
+        if currentDev < epsilon:
+            return currentR
+
+        if currentK < avgDeg:
+            upperBound = currentR
+        else:
+            lowerBound = currentR
+
+    print("[WARNING] ComputeTargetRadius seems not to converge; use current value")
+    return currentR
+
 
 def invokeGenerator(n, avgDeg, expv, outf, seed=-1, segments=-1, worker=-1, bandSpacing=2):
     if not os.path.isfile("./main_hyper"):
@@ -88,6 +129,31 @@ def invokeNkGenerator(n, avgDeg, expv, mode, outf, seed=-1, segments=-1, worker=
     args = ["/usr/bin/time", "-av"] + args
     subprocess.call(args, stdout=outf, stderr=outf, env=my_env)
 
+def invokeEmbedderGenerator(n, avgDeg, expv, outf, seed=-1):
+    if not os.path.isfile("../related_work/girg/embedder"):
+        print("Did not find binary ./embedder")
+        print("Please run this script from within the build directory.")
+        sys.exit(-1)
+
+    if seed < 0:
+        seed = random.randint(0, 0xfffffff)
+
+    R = getTargetRadius(n, expv, avgDeg)
+    C = R - 2*log(n)
+
+    args = ["../related_work/girg/embedder",
+            "--generate", "dummy",
+            "-T", 0,
+            "-n", n,
+            "-C", C,
+            "-alpha", expv,
+            "-seed", seed]
+
+    args = [str(x) for x in args]
+    print("Execute " + " ".join(args))
+    args = ["/usr/bin/time", "-av"] + args
+    subprocess.call(args, stdout=outf, stderr=outf)
+
 def exp10Series(n0, decs, pointsPerDec=3, forceInt = True):
     series = [n0 * 10 ** (x / pointsPerDec) for x in range(decs*pointsPerDec + 1)]
     if forceInt:
@@ -127,12 +193,15 @@ def runSeries(prefix, iterations, confs, exps, algos, cpus, datadir="../data/"):
                             invokeNkGenerator(n, d, ex, 0, outf)
                         elif("nkopt" == algo):
                             invokeNkGenerator(n, d, ex, 1, outf)
+                        elif("emb" == algo):
+                            invokeEmbedderGenerator(n, d, ex, outf)
                         else:
                             assert(False)
 
 cpus = multiprocessing.cpu_count()
 print("Number of threads: %d" % cpus)
-algos = ['nkorg', 'nkopt', 'mh']
+algos = ['nkorg', 'nkopt', 'mh', "emb"]
+algos = ["emb"]
 
 # measure runtime and memory consumption as function of number of nodes
 nodes = exp10Series(1e5, 6, 1)
