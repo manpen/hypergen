@@ -1,0 +1,186 @@
+From 839ee58bf3f1799738de3e8a0c5d05ef9cc21f11 Mon Sep 17 00:00:00 2001
+From: Manuel Penschuck <manuel@ae.cs.uni-frankfurt.de>
+Date: Mon, 3 Apr 2017 11:49:21 +0200
+Subject: [PATCH 1/2] Disable edge-related memory allocation and writes
+
+---
+ graph.hpp            |  4 ++--
+ hyperboliclinear.cpp | 25 +++++++++++++++++++++++--
+ 2 files changed, 25 insertions(+), 4 deletions(-)
+
+diff --git a/graph.hpp b/graph.hpp
+index 1ca4924..9ad7bf9 100644
+--- a/graph.hpp
++++ b/graph.hpp
+@@ -18,8 +18,8 @@ class Graph
+   
+   Graph(int n) {
+     this->n = n;
+-    edges.resize(n);
+-    for(int i = 0; i < n; ++i) labels.push_back(std::to_string(i));
++    //edges.resize(n);
++    //for(int i = 0; i < n; ++i) labels.push_back(std::to_string(i));
+   }
+   
+   Graph(const Graph& G);
+diff --git a/hyperboliclinear.cpp b/hyperboliclinear.cpp
+index 9891054..f020c40 100644
+--- a/hyperboliclinear.cpp
++++ b/hyperboliclinear.cpp
+@@ -27,6 +27,8 @@
+ #define PB emplace_back
+ #define MP make_pair
+ 
++#define ACCUM_EDGES_ONLY
++
+ using std::vector;
+ 
+ namespace {
+@@ -99,6 +101,9 @@ void HyperbolicLinear::sampleEdges() {
+ 
+   int cellA, layerA, cellB, layerB;
+ 
++  uint64_t accum = 0;
++  uint64_t no_edges = 0;
++
+   FOR(i,L) {
+     FORB(j,i,L) {
+       // construct partitioning
+@@ -121,8 +126,14 @@ void HyperbolicLinear::sampleEdges() {
+               if ((j > i || u > v) &&
+                   randdbl() < Hyperbolic::prob(HYPT::dist(pts[u], pts[v]),
+                                                R, T)) {
+-                    edges[u].PB(v);
+-                    edges[v].PB(u);
++#ifdef ACCUM_EDGES_ONLY
++                no_edges++;
++                accum += v;
++                accum += u;
++#else
++                edges[u].PB(v);
++                edges[v].PB(u);
++#endif
+                   }
+             }
+           }
+@@ -175,8 +186,14 @@ void HyperbolicLinear::sampleEdges() {
+             << ", r_u: " << pts[u].r << ", r_v: " << pts[v].r;
+ 
+             if ((j > i || u > v) && randdbl() < p / p_bar) {
++#ifdef ACCUM_EDGES_ONLY
++              no_edges++;
++              accum += v;
++              accum += u;
++#else
+               edges[u].PB(v);
+               edges[v].PB(u);
++#endif
+             }
+ 
+             if (p_bar == 0)
+@@ -195,6 +212,10 @@ void HyperbolicLinear::sampleEdges() {
+       }
+     }
+   }
++
++  std::cout << "Generated " << no_edges << " edges\n"
++               "Avg. Deg  " << (2.0 * no_edges / n) << "\n"
++               "Accum: " << accum << std::endl;
+ }
+ 
+ 
+-- 
+2.7.4
+
+
+From 8510e59f3233fb0c18e14d480a6aad512d995705 Mon Sep 17 00:00:00 2001
+From: Manuel Penschuck <manuel@ae.cs.uni-frankfurt.de>
+Date: Mon, 3 Apr 2017 11:54:01 +0200
+Subject: [PATCH 2/2] Added profiling script/disable unneeded code/adopt to
+ Ubuntu pkgs
+
+---
+ main.cpp | 36 ++++++++++++++++++++++--------------
+ makefile |  4 ++--
+ 2 files changed, 24 insertions(+), 16 deletions(-)
+
+diff --git a/main.cpp b/main.cpp
+index 90b7b87..2250a91 100644
+--- a/main.cpp
++++ b/main.cpp
+@@ -4,6 +4,7 @@
+ // ./singleexperiment --rgmodel=chunglu --average_degree
+ #include <algorithm>
+ #include <cmath>
++#include <ctime>
+ #include <gflags/gflags.h>
+ #include <glog/logging.h>
+ #include <iostream>
+@@ -19,6 +20,8 @@
+ #include "springembedder.hpp"
+ #include "NLEHelper.hpp"
+ 
++#include <ScopedTimer.hpp>
++
+ #define FOR(i,n) for(int (i)=0;(i)<(n);(i)++)
+ #define FORB(i,a,n) for(int (i)=(a);(i)<(n);(i)++)
+ #define FOREACH(it,c) for(__typeof((c).begin()) it=(c).begin();it!=(c).end();++it)
+@@ -74,22 +77,27 @@ int main(int argc, char* argv[]) {
+ 
+   Graph G(0);
+ 
+-  if (!FLAGS_generate.empty()) {
+-    double R = 2 * log(FLAGS_n) + FLAGS_C;
+-    HyperbolicLinear H = HyperbolicLinear::linearSampling(FLAGS_n, R, FLAGS_alpha, FLAGS_T);
+-    H.printToFile(FLAGS_generate.c_str());
+-    G = H.simpleSubgraph();
+-  } else if (!FLAGS_input.empty()) {
+-    unordered_map<std::string, int> label_to_node;
+-    G = Graph::fromFile(FLAGS_input, &label_to_node);
+-    G = G.simpleSubgraph();
+-  } else {
+-    cout << "Please either specify an input graph using --input or use "
+-         << "--generate to generate a random hyperbolic graph. Call with "
+-         << "--help for more information." << endl;
+-    exit(0);
++  {
++      ScopedTimer timer("gen");
++        if (!FLAGS_generate.empty()) {
++            double R = 2 * log(FLAGS_n) + FLAGS_C;
++            HyperbolicLinear H = HyperbolicLinear::linearSampling(FLAGS_n, R, FLAGS_alpha, FLAGS_T);
++            //H.printToFile(FLAGS_generate.c_str());
++            //G = H.simpleSubgraph();
++        } else if (!FLAGS_input.empty()) {
++            unordered_map<std::string, int> label_to_node;
++            G = Graph::fromFile(FLAGS_input, &label_to_node);
++            G = G.simpleSubgraph();
++        } else {
++            cout << "Please either specify an input graph using --input or use "
++                 << "--generate to generate a random hyperbolic graph. Call with "
++                 << "--help for more information." << endl;
++            exit(0);
++        }
+   }
+ 
++  exit(0);
++
+   // Compute giant and sort by degrees
+   G = G.giantSubgraph();
+   vector<int> perm;
+diff --git a/makefile b/makefile
+index 08691d4..c043ac8 100644
+--- a/makefile
++++ b/makefile
+@@ -1,7 +1,7 @@
+ CC = g++
+ 
+-CFLAGS  = -Wall -g -Os -I/usr/local/include -std=c++11
+-LDFLAGS = -lm -lgsl -lgflags -lglog -lcblas -L/usr/local/lib
++CFLAGS  = -Wall -g -O3 -march=native -I/usr/local/include -std=c++11 -I../../include
++LDFLAGS = -lm -lgsl -lgflags -lglog -lgslcblas -L/usr/local/lib
+ BIN = embedder
+ OBJ = hyperboliclinear.o hyperbolic.o graph.o random.o springembedder.o geometricds.o powerlawCommon.o NLEHelper.o
+ 
+-- 
+2.7.4
+
