@@ -1,7 +1,7 @@
 From 839ee58bf3f1799738de3e8a0c5d05ef9cc21f11 Mon Sep 17 00:00:00 2001
 From: Manuel Penschuck <manuel@ae.cs.uni-frankfurt.de>
 Date: Mon, 3 Apr 2017 11:49:21 +0200
-Subject: [PATCH 1/2] Disable edge-related memory allocation and writes
+Subject: [PATCH 1/3] Disable edge-related memory allocation and writes
 
 ---
  graph.hpp            |  4 ++--
@@ -96,7 +96,7 @@ index 9891054..f020c40 100644
 From 8510e59f3233fb0c18e14d480a6aad512d995705 Mon Sep 17 00:00:00 2001
 From: Manuel Penschuck <manuel@ae.cs.uni-frankfurt.de>
 Date: Mon, 3 Apr 2017 11:54:01 +0200
-Subject: [PATCH 2/2] Added profiling script/disable unneeded code/adopt to
+Subject: [PATCH 2/3] Added profiling script/disable unneeded code/adopt to
  Ubuntu pkgs
 
 ---
@@ -181,6 +181,88 @@ index 08691d4..c043ac8 100644
  BIN = embedder
  OBJ = hyperboliclinear.o hyperbolic.o graph.o random.o springembedder.o geometricds.o powerlawCommon.o NLEHelper.o
  
+-- 
+2.7.4
+
+
+From 81731e0543a1a26e5488f7c9817371a995fcf239 Mon Sep 17 00:00:00 2001
+From: Manuel Penschuck <manuel@ae.cs.uni-frankfurt.de>
+Date: Tue, 4 Apr 2017 14:46:33 +0200
+Subject: [PATCH 3/3] More stats
+
+---
+ hyperboliclinear.cpp | 21 ++++++++++++---------
+ main.cpp             |  6 ++++++
+ 2 files changed, 18 insertions(+), 9 deletions(-)
+
+diff --git a/hyperboliclinear.cpp b/hyperboliclinear.cpp
+index f020c40..b1f063d 100644
+--- a/hyperboliclinear.cpp
++++ b/hyperboliclinear.cpp
+@@ -103,6 +103,7 @@ void HyperbolicLinear::sampleEdges() {
+ 
+   uint64_t accum = 0;
+   uint64_t no_edges = 0;
++  uint64_t no_compares = 0;
+ 
+   FOR(i,L) {
+     FORB(j,i,L) {
+@@ -123,18 +124,19 @@ void HyperbolicLinear::sampleEdges() {
+               int u = points_from_cells[i].kthPoint(cellA, layerA, x);
+               int v = points_from_cells[j].kthPoint(cellB, layerB, y);
+ 
+-              if ((j > i || u > v) &&
+-                  randdbl() < Hyperbolic::prob(HYPT::dist(pts[u], pts[v]),
+-                                               R, T)) {
++              if (j > i || u > v) {
++                no_compares++;
++                if (randdbl() < Hyperbolic::prob(HYPT::dist(pts[u], pts[v]), R, T)) {
+ #ifdef ACCUM_EDGES_ONLY
+-                no_edges++;
+-                accum += v;
+-                accum += u;
++                  no_edges++;
++                  accum += v;
++                  accum += u;
+ #else
+-                edges[u].PB(v);
+-                edges[v].PB(u);
++                  edges[u].PB(v);
++                  edges[v].PB(u);
+ #endif
+-                  }
++                }
++              }
+             }
+           }
+         } else {
+@@ -214,6 +216,7 @@ void HyperbolicLinear::sampleEdges() {
+   }
+ 
+   std::cout << "Generated " << no_edges << " edges\n"
++               "Compares: " << no_compares << "\n"
+                "Avg. Deg  " << (2.0 * no_edges / n) << "\n"
+                "Accum: " << accum << std::endl;
+ }
+diff --git a/main.cpp b/main.cpp
+index 2250a91..ee9bc18 100644
+--- a/main.cpp
++++ b/main.cpp
+@@ -76,8 +76,14 @@ int main(int argc, char* argv[]) {
+   cout << "Seed: " << FLAGS_seed << endl;
+ 
+   Graph G(0);
++  std::cout <<
++    "conf.nodes:               " << FLAGS_n << "\n"
++    "conf.degreeExp:           " << FLAGS_alpha << "\n"
++    "conf.seed:                " << FLAGS_seed
++  << std::endl;
+ 
+   {
++
+       ScopedTimer timer("gen");
+         if (!FLAGS_generate.empty()) {
+             double R = 2 * log(FLAGS_n) + FLAGS_C;
 -- 
 2.7.4
 
