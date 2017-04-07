@@ -34,7 +34,7 @@ import itertools
 import random
 
 # decrease these constants to speed-up simulation
-MAX_NO_EDGES = int(1e12)
+MAX_NO_EDGES = int(1e14)
 MAX_NO_NODES = int(1e8)
 iterations = 5
 
@@ -201,7 +201,6 @@ def runSeries(prefix, iterations, confs, exps, algos, cpus, datadir="../data/"):
 cpus = multiprocessing.cpu_count()
 print("Number of threads: %d" % cpus)
 algos = ['nkorg', 'nkopt', 'mh', "emb"]
-algos = ["emb"]
 
 # measure runtime and memory consumption as function of number of nodes
 nodes = exp10Series(1e5, 6, 1)
@@ -210,10 +209,10 @@ exps = [3.0, 2.1]
 confs = list(itertools.product(nodes, degrees))
 confs.sort(key=lambda x: x[0]*x[1])
 prefix = ""
-runSeries("", iterations, confs, exps, algos, cpus)
+#runSeries("", iterations, confs, exps, algos, cpus)
 
 # measure runtime and memory consumption as function of number of nodes
-nodes = [int(1e8)]
+nodes = [int(2**24)]
 degrees = exp10Series(10, 2, 3)
 exps = [3.0]
 confs = list(itertools.product(nodes, degrees))
