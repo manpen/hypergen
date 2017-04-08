@@ -27,9 +27,7 @@ endif()
 add_executable(benchmark_networkit benchmark_networkit.cpp)
 target_link_libraries(benchmark_networkit NetworKitNoEdges)
 
-add_executable(main_hyper 
-    main_hyper.cpp
-    include/Geometry.cpp
+set(HYPER_FILES include/Geometry.cpp
     include/PointGenerator.cpp
     include/RandomHelper.cpp
     include/BandSegment.cpp
@@ -40,4 +38,18 @@ add_executable(main_hyper
     include/ActiveManager.cpp
 )
 
-target_link_libraries(main_hyper  NetworKit Vc)
+# Main Binary
+add_executable(main_hyper 
+    main_hyper.cpp
+    ${HYPER_FILES}
+)
+target_link_libraries(main_hyper NetworKit Vc)
+
+# Binary to measure time to compute distances
+add_executable(main_hyper_skipdist
+        main_hyper.cpp
+        ${HYPER_FILES}
+)
+target_link_libraries(main_hyper_skipdist NetworKit Vc)
+set_target_properties(main_hyper_skipdist PROPERTIES COMPILE_FLAGS "-DSKIP_DIST_COMP=1")
+

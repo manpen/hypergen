@@ -67,7 +67,7 @@ struct Point {
          *      = (...) * 0.5 * (cosh + 1)
          *      = (...) * X
          */
-
+#ifndef SKIP_DIST_COMP
 #ifdef POINCARE
         const Coord pInvLen = (r.cosh + 1.0) * 0.5;
         const Coord poinR = (std::sqrt( (1.0 - 1.0 / pInvLen)));
@@ -83,7 +83,8 @@ struct Point {
         poinX = (poinR * std::sin(phi));
         poinY = (poinR * std::cos(phi));
 
-#endif
+#endif // POINCARE
+#endif //SKIP_DIST_COMP
     }
 
     void setOld() {

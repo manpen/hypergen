@@ -148,6 +148,7 @@ public:
             // copy data
             _req_ids[pos] = req.id;
             _req_phi_data[pos] = req.phi;
+#ifndef SKIP_DIST_COMP
             _req_poin_x_data[pos] = req.poinX;
             _req_poin_y_data[pos] = req.poinY;
             #ifdef LOG_TRANSFORM
@@ -155,7 +156,7 @@ public:
             #else
             _req_poin_r_data[pos] = req.poinInvLen;
             #endif
-
+#endif
             _stops.emplace_back(req.range.second, baseId(req.id));
             std::push_heap(_stops .begin(), _stops .end(), _stop_comp);
 
@@ -171,9 +172,11 @@ public:
                 _map[baseId(_req_ids[target])] = target;
 
                 _req_phi_data[target] = _req_phi_data[source];
+#ifndef SKIP_DIST_COMP
                 _req_poin_x_data[target] = _req_poin_x_data[source];
                 _req_poin_y_data[target] = _req_poin_y_data[source];
                 _req_poin_r_data[target] = _req_poin_r_data[source];
+#endif
             }
 
             // make it impossible to connect to this point
@@ -257,12 +260,14 @@ public:
             }
         }
 
+#ifndef SKIP_DIST_COMP
         for(unsigned int i=_size; i < _end * Packing; ++i) {
             _req_poin_r_data[i] = std::numeric_limits<Coord_b>::max();
 #ifndef NDEBUG
             _req_ids[i] = std::numeric_limits<Node>::max();
 #endif
         }
+#endif
 
 #ifndef NDEBUG
         ASSERT_EQ(_size, expected_size_after);

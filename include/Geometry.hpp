@@ -70,7 +70,7 @@ struct Geometry {
         return std::acosh(x * coshAlphaR - x + 1) / alpha;
     }
 
-    Coord deltaPhi(const SinhCosh pt, const SinhCosh band) const {
+    Coord deltaPhi(const SinhCosh& pt, const SinhCosh& band) const {
         Coord deltaPhiCos = (pt.cosh * band.cosh - coshR) * pt.invsinh * band.invsinh;
         if (deltaPhiCos >  1.0) deltaPhiCos =  1.0;
         if (deltaPhiCos < -1.0) deltaPhiCos = -1.0;

@@ -233,9 +233,29 @@ public:
         auto nextUpdate = p;
         for(; p != _points.cend(); ++p,++pointIdx) {
             const Point& pt = *p;
-            if (pt.phi > threshold)
+
+            if (unlikely(pt.phi > threshold))
                 break;
+
             _processedUntil = pt.phi;
+
+            _stats_data.pointSizes.addPoint( _points.size() );
+
+#ifndef SKIP_DIST_COMP
+            if (nextUpdate == p) {
+                nextUpdate = _points.cbegin() +
+                             std::min<size_t>(_points.size(), pointIdx+_config.activeUpdateInterval);
+
+                ASSERT_GE((nextUpdate-1)->phi, pt.phi);
+
+                performUpdates(pt.phi, (nextUpdate-1)->phi);
+            }
+
+
+            _stats_data.activeSizes.addPoint( _active.requestsPending() );
+            _stats_data.candidates.addPoint( _active.size() );
+
+
 
             const Coord_v pt_phi(static_cast<Coord_b>(pt.phi));
 
@@ -250,22 +270,6 @@ public:
             const Coord_v threshR = static_cast<Coord_b>(_geometry.poincareR / pt.poinInvLen);
         #endif
 
-        _stats_data.pointSizes.addPoint( _points.size() );
-
-
-            if (nextUpdate == p) {
-                nextUpdate = _points.cbegin() +
-                        std::min<size_t>(_points.size(), pointIdx+_config.activeUpdateInterval);
-
-                ASSERT_GE((nextUpdate-1)->phi, pt.phi);
-
-                performUpdates(pt.phi, (nextUpdate-1)->phi);
-            }
-
-            _stats_data.activeSizes.addPoint( _active.requestsPending() );
-            _stats_data.candidates.addPoint( _active.size() );
-
-#ifndef SKIP_DIST_COMP
             bool pointFromLastSegment;
             if (Endgame)
                 pointFromLastSegment = pt.old();
@@ -333,6 +337,10 @@ public:
             _stats_data.neighbors.addPoint(noNeighbors);
 #endif
         }
+
+#ifdef SKIP_DIST_COMP
+        performUpdates( (p-1)->phi, (p-1)->phi );
+#endif
 
         // remove complete points
         if (p == _points.cend()) {

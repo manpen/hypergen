@@ -28,6 +28,9 @@
 #include <omp.h>
 
 //#define COUNT_NEIGHBORS
+//#define DEGREE_DIST
+
+
 #include "include/Generator.hpp"
 #include "include/Configuration.hpp"
 
@@ -47,7 +50,12 @@
 #include <string>
 
 
+
 int main(int argc, char* argv[]) {
+#if defined(CROSS_REFERENCE) && defined(SKIP_DIST_COMP)
+    static_assert(false, "Cannot build CROSS_REFERENCE with SKIP_DIST_COMP");
+#endif
+
     std::cout <<
         "main_hyper  Copyright (C) 2017 Manuel Penschuck\n"
         "This program comes with ABSOLUTELY NO WARRANTY;\n"
@@ -58,6 +66,7 @@ int main(int argc, char* argv[]) {
     Configuration config(argc, argv);
 
     const auto threadsBefore = omp_get_max_threads();
+    omp_set_num_threads(config.noWorker);
     std::cout <<
         "sizeof(Coord): "   << sizeof(Coord) << "\n"
         "sizeof(Node): "    << sizeof(Node) << "\n"
