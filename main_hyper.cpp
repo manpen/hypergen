@@ -102,13 +102,19 @@ int main(int argc, char* argv[]) {
     points.resize(config.nodes, Point(0, -100, 1));
 #endif
 
+#ifdef DEGREE_DIST
+    std::vector<std::vector<uint32_t>> degrees(config.noSegments);
+    for(auto& vec : degrees)
+        vec.resize(config.nodes, 0);
+#endif
+
     std::vector<EdgeId> nodeCounters(config.noSegments);
     std::vector<EdgeId> edgeCounters(config.noSegments);
     std::vector<std::vector<Edge>> edges(config.noSegments);
     std::vector<Node> nodeAccum(config.noSegments*8);
 
 #ifdef COUNT_NEIGHBORS
-    std::vector<Node> neighborhood(confNoPoints, 0);
+    std::vector<Node> neighborhood(config.nodes, 0);
 #endif
 
     Generator gen(config);
@@ -125,6 +131,11 @@ int main(int argc, char* argv[]) {
         auto addEdge = [&](Edge e, unsigned int segmentId) {
 #ifdef COUNT_NEIGHBORS
             neighborhood[e.first]++;
+#endif
+
+#ifdef DEGREE_DIST
+            degrees[segmentId][e.first]++;
+            degrees[segmentId][e.second]++;
 #endif
 
 #ifdef CROSS_REFERENCE
@@ -144,6 +155,25 @@ int main(int argc, char* argv[]) {
 
         gen.generate(addEdge, addPoint);
     }
+
+#ifdef DEGREE_DIST
+    {
+        // sum all partial counts
+        for(unsigned int i=1; i < config.noSegments; ++i) {
+            auto dest = degrees[0].begin();
+            for(auto src = degrees[i].cbegin(); src != degrees[i].cend(); ++src, ++dest)
+                *dest += *src;
+        }
+
+        Histogram<true> hist;
+        for(const auto & d : degrees[0]) {
+            hist.addPoint(d);
+        }
+
+        hist.toStream(std::cout, "DEGREE-DIST");
+    };
+#endif
+
 
 #ifdef CROSS_REFERENCE
     const auto noPoints = std::accumulate(nodeCounters.cbegin(), nodeCounters.cend(), 0);
