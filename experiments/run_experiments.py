@@ -36,7 +36,7 @@ import random
 # decrease these constants to speed-up simulation
 MAX_NO_EDGES = int(1e14)
 MAX_NO_NODES = int(1e8)
-iterations = 5
+iterations = 9
 
 def getExpectedDegree(n, R, alpha):
     gamma = 2*alpha+1
@@ -79,7 +79,7 @@ def getTargetRadius(n, alpha, avgDeg):
     return currentR
 
 
-def invokeGenerator(n, avgDeg, expv, outf, seed=-1, segments=-1, worker=-1, bandSpacing=2):
+def invokeGenerator(n, avgDeg, expv, outf, seed=-1, segments=-1, worker=-1, bandSpacing=2, skipDistComp=False):
     if not os.path.isfile("./main_hyper"):
         print("Did not find binary ./main_hyper -- please run this script")
         print("from within the build directory.")
@@ -88,7 +88,8 @@ def invokeGenerator(n, avgDeg, expv, outf, seed=-1, segments=-1, worker=-1, band
     if seed < 0:
         seed = random.randint(0, 0xfffffff)
 
-    args = ["./main_hyper", "-n", n, "-d", avgDeg, "-e", expv, "-s", seed, "-b", bandSpacing]
+    args = ["./main_hyper" + ("_skipdist" if skipDistComp else ""),
+            "-n", n, "-d", avgDeg, "-e", expv, "-s", seed, "-b", bandSpacing]
 
     if (segments > 0):
         args += ["-w", segments]
@@ -187,8 +188,10 @@ def runSeries(prefix, iterations, confs, exps, algos, cpus, datadir="../data/"):
                     with open(fn, 'w') as outf:
                         outf.write("Hostname: %s" % socket.gethostname())
 
-                        if ("mh" == algo):
-                            invokeGenerator(n, d, ex, outf, worker=cpus, segments=(1 if d < 100 else 2) * cpus)
+                        if ("mh" == algo or "mh_skipdist" == algo):
+                            invokeGenerator(n, d, ex, outf, worker=cpus,
+                                            segments=(1 if d < 100 else 2) * cpus,
+                                            skipDistComp=("mh_skipdist" == algo))
                         elif("nkorg" == algo):
                             invokeNkGenerator(n, d, ex, 0, outf)
                         elif("nkopt" == algo):
@@ -212,10 +215,20 @@ prefix = ""
 #runSeries("", iterations, confs, exps, algos, cpus)
 
 # measure runtime and memory consumption as function of number of nodes
+algos = ['nkorg', 'nkopt', 'mh', "emb", 'mh_skipdist']
 nodes = [int(2**24)]
 degrees = exp10Series(10, 2, 3)
 exps = [3.0]
 confs = list(itertools.product(nodes, degrees))
 confs.sort(key=lambda x: x[0]*x[1])
 prefix = ""
-runSeries("degs_", iterations, confs, exps, algos, cpus)
+#runSeries("degs_", iterations, confs, exps, algos, cpus)
+
+# measure runtime and memory consumption as function of number of nodes
+algos = ['mh', 'mh_skipdist']
+nodes = [int(1e8)]
+degrees = exp10Series(10, 2, 3)
+exps = [3.0]
+confs = list(itertools.product(nodes, degrees))
+confs.sort(key=lambda x: x[0]*x[1])
+runSeries("dist_", iterations, confs, exps, algos, cpus)
