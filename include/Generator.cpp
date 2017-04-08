@@ -35,7 +35,7 @@ Generator::Generator(const Configuration& config)
     , _geometry(config.nodes, config.avgDegree, config.alpha, config.R)
     , _noNodes(config.nodes)
     , _randgen(config.seed)
-    , _maxRepeatRange(2.0 * M_PI / (config.noSegments < 64 ? 8.0 : 1.5) / config.noSegments)
+    , _maxRepeatRange(2.0 * M_PI / (config.noSegments < 16 ? 4.0 : 1.5) / config.noSegments)
     , _bandLimits(_computeBandLimits())
     , _firstStreamingBand(_computeFirstStreamingBand(_maxRepeatRange))
 {
@@ -58,7 +58,8 @@ Generator::Generator(const Configuration& config)
     // print out global stats
     if (_stats) { 
         std::cout << "Number of bands: " << (_bandLimits.size()-1) << "\n"
-                     "TargetRadius: " << _geometry.R
+                     "TargetRadius: " << _geometry.R << "\n"
+                     "R = 2logn + C => C = " << (_geometry.R - 2 * std::log(config.nodes))
         << std::endl;
         
         std::cout << "Streaming nodes per segment:";
