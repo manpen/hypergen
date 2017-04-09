@@ -27,6 +27,12 @@ endif()
 add_executable(benchmark_networkit benchmark_networkit.cpp)
 target_link_libraries(benchmark_networkit NetworKitNoEdges)
 
+if (CMAKE_BUILD_TYPE EQUAL "RELEASE")
+    add_executable(benchmark_networkit_skipdist benchmark_networkit.cpp)
+    target_link_libraries(benchmark_networkit_skipdist NetworKitSkipDist)
+endif()
+
+
 set(HYPER_FILES include/Geometry.cpp
     include/PointGenerator.cpp
     include/RandomHelper.cpp
@@ -45,11 +51,13 @@ add_executable(main_hyper
 )
 target_link_libraries(main_hyper NetworKit Vc)
 
-# Binary to measure time to compute distances
-add_executable(main_hyper_skipdist
-        main_hyper.cpp
-        ${HYPER_FILES}
-)
-target_link_libraries(main_hyper_skipdist NetworKit Vc)
-set_target_properties(main_hyper_skipdist PROPERTIES COMPILE_FLAGS "-DSKIP_DIST_COMP=1")
+if (CMAKE_BUILD_TYPE EQUAL "RELEASE")
+    # Binary to measure time to compute distances
+    add_executable(main_hyper_skipdist
+            main_hyper.cpp
+            ${HYPER_FILES}
+    )
+    target_link_libraries(main_hyper_skipdist NetworKit Vc)
+    set_target_properties(main_hyper_skipdist PROPERTIES COMPILE_FLAGS "-DSKIP_DIST_COMP=1")
+endif()
 

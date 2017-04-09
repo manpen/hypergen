@@ -40,11 +40,15 @@ cd $VCDIR
 echo "Build NetworKIT"
 cd $BDIR/libs/NetworKit
     perl -pi -e "s/cpp\s=.*/cpp = $CXX/g" build.conf
-
     rm *.a
+ 
     echo "#define HYPERBOLIC_NO_EDGES" > networkit/cpp/generators/HyperbolicBuildConfig.h
     scons --optimize=Opt --target=Lib -j$CORES
     mv libNetworKit-Core-Opt.a libNetworKitNoEdges.a
+
+    echo "#define HYPERBOLIC_SKIP_DIST" >> networkit/cpp/generators/HyperbolicBuildConfig.h
+    scons --optimize=Opt --target=Lib -j$CORES
+    mv libNetworKit-Core-Opt.a libNetworKitSkipDist.a
 
     echo "" > networkit/cpp/generators/HyperbolicBuildConfig.h
     scons --optimize=Opt --target=Lib -j$CORES

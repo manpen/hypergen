@@ -112,7 +112,12 @@ Graph HyperbolicGenerator::generateCold(const vector<double> &angles, const vect
 }
 
 Graph HyperbolicGenerator::generateColdOrig(const vector<double> &angles, const vector<double> &radii, double R) const {
-        INFO("Start Original");
+    INFO("Start Original");
+#ifdef HYPERBOLIC_SKIP_DIST_COMP
+    INFO("Distance computation disabled");
+#endif
+
+
 	const count n = angles.size();
 	assert(radii.size() == n);
 
@@ -183,8 +188,10 @@ Graph HyperbolicGenerator::generateColdOrig(const vector<double> &angles, const 
 		threadtimers[id].start();
 		#pragma omp for schedule(guided) nowait
 		for (index i = 0; i < n; i++) {
+#ifndef HYPERBOLIC_SKIP_DIST_COMP
 			const double coshr = cosh(radii[i]);
 			const double sinhr = sinh(radii[i]);
+#endif
 			count expectedDegree = (4/M_PI)*n*exp(-(radii[i])/2);
 			vector<index> near;
 			near.reserve(expectedDegree*1.1);
@@ -196,7 +203,7 @@ Graph HyperbolicGenerator::generateColdOrig(const vector<double> &angles, const 
 					//minTheta = 0;
 					//maxTheta = 2*M_PI;
 					vector<Point2D<double>> neighborCandidates = getPointsWithinAngles(minTheta, maxTheta, bands[j], bandAngles[j]);
-
+#ifndef HYPERBOLIC_SKIP_DIST_COMP
 					const count sSize = neighborCandidates.size();
 					for(index w = 0; w < sSize; w++){
                                                 numCompares++;
@@ -208,7 +215,10 @@ Graph HyperbolicGenerator::generateColdOrig(const vector<double> &angles, const 
 							}
 						}
 					}
-				}
+#else
+                nodeAccum += neighborCandidates.size();
+#endif
+                }
 			}
 			if (directSwap) {
 				auto newend = std::remove(near.begin(), near.end(), i); //no self loops!
