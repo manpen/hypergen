@@ -105,7 +105,7 @@ def invokeGenerator(n, avgDeg, expv, outf, seed=-1, segments=-1, worker=-1, band
     args = ["/usr/bin/time", "-av"] + args
     subprocess.call(args, stdout=outf, stderr=outf, env=my_env)
 
-def invokeNkGenerator(n, avgDeg, expv, mode, outf, seed=-1, segments=-1, worker=-1):
+def invokeNkGenerator(n, avgDeg, expv, mode, outf, seed=-1, segments=-1, worker=-1, skipDistComp=False):
     if not os.path.isfile("./benchmark_networkit"):
         print("Did not find binary ./benchmark_networkit")
         print("Please run this script from within the build directory.")
@@ -114,7 +114,8 @@ def invokeNkGenerator(n, avgDeg, expv, mode, outf, seed=-1, segments=-1, worker=
     if seed < 0:
         seed = random.randint(0, 0xfffffff)
 
-    args = ["./benchmark_networkit", "-n", n, "-d", avgDeg, "-e", expv, "-s", seed, "-g", mode]
+    args = ["./benchmark_networkit" + ("_skipdist" if skipDistComp else ""),
+            "-n", n, "-d", avgDeg, "-e", expv, "-s", seed, "-g", mode]
 
     if (segments > 0):
         args += ["-w", segments]
@@ -173,7 +174,7 @@ def runSeries(prefix, iterations, confs, exps, algos, cpus, datadir="../data/"):
                     fn = "%s/%s/%d/a%s_n%d_d%d_e%.1f.log" % (datadir, prefix + algo, it, algo, n, d, ex)
                     print('Process ' + fn)
 
-                    if (algo != "mh" and n > MAX_NO_NODES):
+                    if (algo != "mh" and algo != "mh_skipdist" and n > MAX_NO_NODES):
                         print(" ... skip due to MAX_NO_NODES constraint")
                         continue
 
@@ -192,8 +193,9 @@ def runSeries(prefix, iterations, confs, exps, algos, cpus, datadir="../data/"):
                             invokeGenerator(n, d, ex, outf, worker=cpus,
                                             segments=(1 if d < 100 else 2) * cpus,
                                             skipDistComp=("mh_skipdist" == algo))
-                        elif("nkorg" == algo):
-                            invokeNkGenerator(n, d, ex, 0, outf)
+                        elif("nkorg" == algo or "nkorg_skipdist" == algo):
+                            invokeNkGenerator(n, d, ex, 0, outf,
+                                              skipDistComp=("nkorg_skipdist" == algo))
                         elif("nkopt" == algo):
                             invokeNkGenerator(n, d, ex, 1, outf)
                         elif("emb" == algo):
@@ -215,20 +217,11 @@ prefix = ""
 #runSeries("", iterations, confs, exps, algos, cpus)
 
 # measure runtime and memory consumption as function of number of nodes
-algos = ['nkorg', 'nkopt', 'mh', "emb", 'mh_skipdist']
+algos = ['nkorg', 'nkopt', 'mh', "emb", 'mh_skipdist', 'nkorg_skipdist']
 nodes = [int(2**24)]
 degrees = exp10Series(10, 2, 3)
 exps = [3.0]
 confs = list(itertools.product(nodes, degrees))
 confs.sort(key=lambda x: x[0]*x[1])
 prefix = ""
-#runSeries("degs_", iterations, confs, exps, algos, cpus)
-
-# measure runtime and memory consumption as function of number of nodes
-algos = ['mh', 'mh_skipdist']
-nodes = [int(1e8)]
-degrees = exp10Series(10, 2, 3)
-exps = [3.0]
-confs = list(itertools.product(nodes, degrees))
-confs.sort(key=lambda x: x[0]*x[1])
-runSeries("dist_", iterations, confs, exps, algos, cpus)
+runSeries("degs_", iterations, confs, exps, algos, cpus)
