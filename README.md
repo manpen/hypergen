@@ -1,3 +1,9 @@
+# HyperGen
+This repository contains a prototype implementation of
+"Generating practical random hyperbolic graphs in near-linear time
+and with sub-linear memory" [M. Penschuck, SEA 2017].
+Please refer to the branch SEA17 to reproduce the results.
+
 # Building all binaries
 In order to build HyperGen you need a recent GCC compiler with OpenMP support,
 cmake and scons (for NetworKit). On Ubuntu 16.04 you can install the dependencies
@@ -82,12 +88,5 @@ increase the problem size and rerun the script. In case you terminate a run, ple
 delete the corresponding partial log file manually.
 
 # Analysing the runs
-After running the experiments (or during a run), you can analyse the log files as follows:
-
-```
-cd experiments
-python3 ./analyse_logs.py
-```
-
-This script will generate a new folder "experiments/results" containing various plots and
-latex tables.
+After running the experiments (or during a run), you can analyse the log files using the
+Jupyter Notebook contained in experiments/analyse_logs.ipynb.
