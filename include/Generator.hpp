@@ -77,26 +77,24 @@ public:
                     ScopedTimer timer(timer_global[s]);
 
                     unsigned int firstRequestBand = 0;
-                    if (_config.bandLimits == Configuration::BandLimitType::BandLin) {
-                        ASSERT_GE(_bandLimits[1], _geometry.R / 2);
+                    ASSERT_GE(_bandLimits[1], _geometry.R / 2);
 
-                        const auto &points = _segments[s]->getBand(0).getPoints();
-                        for (auto it = points.cbegin(); it != points.cend(); ++it) {
-                            for (auto nbr = it + 1; nbr != points.cend(); ++nbr) {
-                                edgeCB({it->id, nbr->id}, s);
-                            }
+                    const auto &points = _segments[s]->getBand(0).getPoints();
+                    for (auto it = points.cbegin(); it != points.cend(); ++it) {
+                        for (auto nbr = it + 1; nbr != points.cend(); ++nbr) {
+                            edgeCB({it->id, nbr->id}, s);
                         }
-
-                        for (auto ns = s + 1; ns < _segments.size(); ++ns) {
-                            for (const auto &nbr : _segments[ns]->getBand(0).getPoints()) {
-                                for (const auto &pt : points) {
-                                    edgeCB({pt.id, nbr.id}, s);
-                                }
-                            }
-                        }
-
-                        firstRequestBand = 1;
                     }
+
+                    for (auto ns = s + 1; ns < _segments.size(); ++ns) {
+                        for (const auto &nbr : _segments[ns]->getBand(0).getPoints()) {
+                            for (const auto &pt : points) {
+                                edgeCB({pt.id, nbr.id}, s);
+                            }
+                        }
+                    }
+
+                    firstRequestBand = 1;
 
                     for (unsigned int b = firstRequestBand; b < _firstStreamingBand; ++b) {
                         auto &band = _segments[s]->getBand(b);

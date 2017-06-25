@@ -42,20 +42,12 @@ Configuration::Configuration(int argc, char* argv[]) {
         else if (key == "-R") { R = stod(value); }
         else if (key == "-i") { activeUpdateInterval = stoi(value); }
 
-        else if (key == "-m") {
-            if (value == "l" || value == "L") {
-                bandLimits = BandLimitType::BandLin;
-            } else if (value == "e" || value == "E") {
-                bandLimits = BandLimitType::BandExp;
-            } else {
-                std::cerr << "Only support Bandlimit types l/L or e/E" << std::endl;
-                abort();
-            }
-
-
-        }
         else if (key == "-b") {
-            bandExpFactor = bandLinFactor = stod(value);
+            bandLinFactor = stod(value);
+        }
+        else if (key == "-h") {
+            dump();
+            abort();
         } else {
             std::cerr << "Unknown argument: " << key << std::endl;
             abort();
@@ -74,20 +66,19 @@ Configuration::Configuration(int argc, char* argv[]) {
 
 void Configuration::dump() const {
     std::cout <<
-        "conf.nodes:               " << nodes                << "\n"
-        "conf.avgDegree:           " << avgDegree            << "\n"
-        "conf.degreeExp:           " << degreeExp            << "\n"
-        "conf.alpha:               " << alpha                << "\n"
-        "conf.R:                   " << R                    << "\n\n"
+    "Configuration\n"
+        " conf.nodes:                        -n " << nodes                << "\n"
+        " conf.avgDegree:                    -d " << avgDegree            << "\n"
+        " conf.degreeExp:                    -e " << degreeExp            << "\n"
+        " conf.alpha: (derived from -e)         " << alpha                << "\n"
+        " conf.R: (default: derived from -d) -R " << R                    << "\n\n"
 
-        "conf.seed:                " << seed                 << "\n"
-        "conf.actveUpdateInterval: " << activeUpdateInterval << "\n"
-        "conf.noWorker:            " << noWorker             << "\n"
-        "conf.noSegments:          " << noSegments           << "\n"
-        "conf.verbosity:           " << verbosity            << "\n"
+        " conf.seed:                         -s " << seed                 << "\n"
+        " conf.activeUpdateInterval:         -i " << activeUpdateInterval << "\n"
+        " conf.noWorker:                     -w " << noWorker             << "\n"
+        " conf.noSegments:                   -p " << noSegments           << "\n"
+        " conf.verbosity:                    -v " << verbosity            << "\n"
 
-        "conf.bandLimits:          " << (bandLimits == BandLimitType::BandLin ? "LIN" : "EXP") << "\n"
-        "conf.bandExpFactor:       " << bandExpFactor        << "\n"
-        "conf.bandLinFactor:       " << bandLinFactor        << "\n"
+        " conf.bandLinFactor:                -b " << bandLinFactor        << "\n"
     << std::endl;
 }

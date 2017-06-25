@@ -43,10 +43,6 @@ struct Configuration {
 
     Coord R {-1};
 
-    enum BandLimitType {BandExp, BandLin};
-    BandLimitType bandLimits {BandLin};
-
-    Coord bandExpFactor {1.0};
     Coord bandLinFactor {3.0};
 
     Configuration() = delete;

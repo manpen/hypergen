@@ -68,16 +68,17 @@ int main(int argc, char* argv[]) {
     const auto threadsBefore = omp_get_max_threads();
     omp_set_num_threads(config.noWorker);
     std::cout <<
-        "sizeof(Coord): "   << sizeof(Coord) << "\n"
-        "sizeof(Node): "    << sizeof(Node) << "\n"
-        "sizeof(Point): "   << sizeof(Point) << "\n"
-        "sizeof(Request): " << sizeof(Request) << "\n"
-        "sizeof(DefaultPrng):" << sizeof(DefaultPrng) <<
+        "Build configuration\n"
+        " sizeof(Coord): "   << sizeof(Coord) << "\n"
+        " sizeof(Node): "    << sizeof(Node) << "\n"
+        " sizeof(Point): "   << sizeof(Point) << "\n"
+        " sizeof(Request): " << sizeof(Request) << "\n"
+        " sizeof(DefaultPrng):" << sizeof(DefaultPrng) <<
     std::endl;
 
-    std::cout << "SIMD: NodePacking=" << NodePacking << " CoordPacking=" << CoordPacking << std::endl;
+    std::cout << " SIMD: NodePacking=" << NodePacking << " CoordPacking=" << CoordPacking << std::endl;
     {
-        std::cout << "Cross-Referencing: "
+        std::cout << " Cross-Referencing: "
         #ifdef CROSS_REFERENCE
             "ENABLED"
         #else
@@ -86,7 +87,7 @@ int main(int argc, char* argv[]) {
         << std::endl;
     }
     {
-        std::cout << "Log-Transform: "
+        std::cout << " Log-Transform: "
         #ifdef LOG_TRANSFORM
             "ENABLED"
         #else
@@ -94,6 +95,8 @@ int main(int argc, char* argv[]) {
         #endif
         << std::endl;
     }
+
+    std::cout << "\n\n";
 
 
 // run new generator

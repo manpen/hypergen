@@ -227,40 +227,23 @@ void Generator::_prepareGlobalPoints() {
 std::vector<Coord> Generator::_computeBandLimits() const {
     std::vector<Coord> bandRadius;
 
-    if (_config.bandLimits == Configuration::BandLimitType::BandLin) {
-        Coord seriesSpacing = std::log(_config.bandLinFactor) /  (_geometry.alpha + 0.5);
-        const unsigned int len = std::ceil(_geometry.R / 2 / seriesSpacing);
-        seriesSpacing = _geometry.R / 2 / len;
+    Coord seriesSpacing = std::log(_config.bandLinFactor) /  (_geometry.alpha + 0.5);
+    const unsigned int len = std::ceil(_geometry.R / 2 / seriesSpacing);
+    seriesSpacing = _geometry.R / 2 / len;
 
-        std::cout << "Use " << len << " bands with a spacing of " << seriesSpacing << std::endl;
+    std::cout << "Use " << len << " bands with a spacing of " << seriesSpacing << std::endl;
 
-        constexpr auto baseBands = 1;
+    constexpr auto baseBands = 1;
 
-        bandRadius.reserve(baseBands + len + 1);
+    bandRadius.reserve(baseBands + len + 1);
 
-        for(unsigned int k=0; k <= baseBands; k++)
-            bandRadius.push_back(_geometry.R / 2 / baseBands * k);
+    for(unsigned int k=0; k <= baseBands; k++)
+        bandRadius.push_back(_geometry.R / 2 / baseBands * k);
 
-        for(unsigned int k=1; k <= len; k++)
-            bandRadius.push_back(_geometry.R / 2 + seriesSpacing * k);
+    for(unsigned int k=1; k <= len; k++)
+        bandRadius.push_back(_geometry.R / 2 + seriesSpacing * k);
 
-        bandRadius.back() = _geometry.R;
-
-    } else {
-        // based on NetworKIT
-        bandRadius.push_back(0.0);
-
-        constexpr Coord seriesRatio = 0.91;
-        const uint32_t logn = ceil(_geometry.R) * _config.bandExpFactor;
-        const Coord a = _geometry.R * (1.0 - seriesRatio) / (1.0 - std::pow(seriesRatio, logn));
-
-        for (uint32_t i = 1; i < logn; i++) {
-            Coord c_i = a * (1.0 - std::pow(seriesRatio, i)) / (1.0 - seriesRatio);
-            bandRadius.push_back(c_i);
-        }
-
-        bandRadius.push_back(_geometry.R);
-    }
+    bandRadius.back() = _geometry.R;
 
     return bandRadius;
 }
