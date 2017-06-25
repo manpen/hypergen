@@ -101,11 +101,6 @@ public:
                           << std::endl;
             }
 
-            if (i == 1000) {
-                std::cerr << "Loop ?" << std::endl;
-                abort();
-            }
-
             // Generate points. This is necessary, if the last time
             // we went outside of our allowance
             if (1) {
@@ -140,9 +135,6 @@ public:
             }
 
         } while(finalize ? !band.done(threshold) : !band.done());
-
-        //if (finalize)
-        //    band.propagate<Endgame, false>(threshold, threshold, getBandAbove(bandIdx));
     }
 
     const CoordInter& getPhiRange() const {return _phiRange;}

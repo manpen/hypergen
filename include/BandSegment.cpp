@@ -82,7 +82,7 @@ void BandSegment::generatePoints() {
     sortPoints();
 
     _active.test_shrink();
-    if (_points.capacity() > 1.5 * _points.size())
+    if (_points.capacity() > 2 * _points.size())
         _points.shrink_to_fit();
 
 
@@ -108,8 +108,8 @@ Coord_b BandSegment::prepareEndgame(BandSegment& band) {
 // copy points
     //assert(_points.empty());
     for(auto pt : band.getPoints()) {
-        if (pt.phi > 2*M_PI) {
-            pt.phi -= 2 * M_PI;
+        if (pt.phi > 2.0*M_PI) {
+            pt.phi -= 2.0*M_PI;
             ASSERT_EQ(_phiRange.first, 0.0);
         }
 
@@ -129,7 +129,7 @@ Coord_b BandSegment::prepareEndgame(BandSegment& band) {
     //band.getActive().clear(true);
     _active.copyFrom(band._active, true);
     if (_phiRange.first < 1e-10)
-        _active.fixRange(2*M_PI);
+        _active.fixRange(2.0*M_PI);
 
     _checkInvariants();
 
