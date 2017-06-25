@@ -19,7 +19,7 @@ cd build_gcc
 ./main_hyper -n 1000000 -d 1000
 ```
 
-All experiments are conducted on a system with AVX2. The code builds without,
+All experiments are conducted on a system with AVX2. The code builds without it,
 but is untested and may yield different results. Therefore, there is a check in
 the compile script.
 
@@ -31,7 +31,24 @@ For very small networks, you may therefore get an error message. This is not an
 issue of the algorithm itself, but rather out-of-scope of this application. It may
 get fixed in the future.
 
-# Running the Experiments
+# Experiments
+## Building Hyperbolic Embedder
+For completeness our experiments optionally include an implementation of the GIRG
+model provided by [https://bitbucket.org/HaiZhung/hyperbolic-embedder/]. It is
+included as a GIT submodule in related_work. As a few manual modifications are necessary,
+it is however not automatically build by the compile script. The following steps allow
+building it on a Ubuntu 16.04 system:
+
+Add "#include <ctime>" related_work/hyp_emb/main.cpp.
+Replace "-lcblas" by "-lgslcblas" in related_work/hyp_emp/makefile
+
+```
+sudo apt-get install libgflags-dev libgoogle-glog-dev libgsl-dev
+cd related_work/hyp_emb/
+make
+```
+
+## Running the Experiments
 In order to compare HyperGen, NkGen and NkGenOpt you can run our invokation script.
 The analysis scripts require Python3 and a couple of modules. On Ubuntu they may be
 installed using the following command:
