@@ -45,7 +45,7 @@ struct Configuration {
 
     Coord bandLinFactor {3.0};
 
-    Configuration() = delete;
+    Configuration() = default;
     Configuration(int argc, char* argv[]);
 
     void dump() const;

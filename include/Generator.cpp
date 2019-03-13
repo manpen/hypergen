@@ -263,7 +263,7 @@ unsigned int Generator::_computeFirstStreamingBand(const double thresholdSize) c
     return firstStreamingBand;
 }
 
-void Generator::_reportEndStats() const {
+void Generator::_reportEndStats() {
     if (!_stats)
         return;
   
@@ -328,4 +328,6 @@ void Generator::_reportEndStats() const {
     tot_stats.pointSizes.toStream(std::cout, "HIST-TOT-PTS");
     tot_stats.neighbors.toStream(std::cout, "HIST-TOT-NBR");
     tot_stats.prelimCheck.toStream(std::cout, "HIST-PRE-CHK");
+
+    _num_edges = tot_stats.edges;
 }

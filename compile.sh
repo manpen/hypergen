@@ -46,15 +46,6 @@ cd $BDIR/libs/NetworKit
     scons --optimize=Opt --target=Lib -j$CORES
     mv libNetworKit-Core-Opt.a libNetworKitNoEdges.a
 
-    echo "#define HYPERBOLIC_SKIP_DIST" >> networkit/cpp/generators/HyperbolicBuildConfig.h
-    scons --optimize=Opt --target=Lib -j$CORES
-    mv libNetworKit-Core-Opt.a libNetworKitSkipDist.a
-
-    echo "" > networkit/cpp/generators/HyperbolicBuildConfig.h
-    scons --optimize=Opt --target=Lib -j$CORES
-    rm libNetworKit.a
-    mv libNetworKit-Core-Opt.a libNetworKit.a
-    
 cd $BDIR
 
 echo "Build HyperGen"

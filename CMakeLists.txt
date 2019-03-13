@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.0)
-project(mhyperbolic)
+project(hypergen)
 
 include_directories(libs/NetworKit/include/)
 link_directories(libs/NetworKit)
@@ -44,20 +44,8 @@ set(HYPER_FILES include/Geometry.cpp
     include/ActiveManager.cpp
 )
 
-# Main Binary
-add_executable(main_hyper 
-    main_hyper.cpp
-    ${HYPER_FILES}
-)
-target_link_libraries(main_hyper NetworKit Vc)
-
-if (CMAKE_BUILD_TYPE EQUAL "RELEASE")
-    # Binary to measure time to compute distances
-    add_executable(main_hyper_skipdist
-            main_hyper.cpp
-            ${HYPER_FILES}
-    )
-    target_link_libraries(main_hyper_skipdist NetworKit Vc)
-    set_target_properties(main_hyper_skipdist PROPERTIES COMPILE_FLAGS "-DSKIP_DIST_COMP=1")
-endif()
-
+add_executable(benchmark_hypergen
+        main_benchmark_hypergen.cpp
+        ${HYPER_FILES}
+        )
+target_link_libraries(benchmark_hypergen Vc)

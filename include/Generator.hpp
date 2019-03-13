@@ -241,6 +241,8 @@ public:
     }
     
     const Geometry getGeometry() const { return _geometry; }
+
+    const EdgeId num_edges() const { return _num_edges;}
     
 private:
     // statistics
@@ -257,7 +259,9 @@ private:
     const Coord _maxRepeatRange;
     const std::vector<Coord> _bandLimits;
     unsigned int _firstStreamingBand;
-    
+
+    EdgeId _num_edges{0};
+
     std::vector<std::unique_ptr<Segment>> _segments;
     std::vector<std::unique_ptr<Segment>> _endgame_segments;
 
@@ -270,7 +274,7 @@ private:
 
     // generation
     void _prepareGlobalPoints();
-    void _reportEndStats() const;
+    void _reportEndStats();
 };
 
 #endif
