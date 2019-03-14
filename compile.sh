@@ -49,13 +49,7 @@ cd $BDIR/libs/NetworKit
 cd $BDIR
 
 echo "Build HyperGen"
-    mkdir debug_$CC
-    cd debug_$CC
-    cmake -DCMAKE_BUILD_TYPE=Debug -DTARGET_ARCHITECTURE=$ARCH ..
-    make -j $CORES
-    cd ..
-
     mkdir build_$CC
     cd build_$CC
-    cmake -DCMAKE_BUILD_TYPE=Release -DTARGET_ARCHITECTURE=$ARCH ..
-    make -j $CORES
+    cmake -DCMAKE_BUILD_TYPE=Release -DTARGET_ARCHITECTURE=$ARCH -GNinja -DCMAKE_CXX_FLAGS="-w" ..
+    ninja
