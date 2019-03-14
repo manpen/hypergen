@@ -107,11 +107,11 @@ std::pair<std::vector<double>, std::vector<double>> HyperbolicGenerator::generat
         return {anglecopy, radiicopy};
 }
 
-Graph HyperbolicGenerator::generateCold(const vector<double> &angles, const vector<double> &radii, double R) const {
+Graph HyperbolicGenerator::generateCold(const vector<double> &angles, const vector<double> &radii, double R) {
     return generateColdOrig(angles, radii, R);
 }
 
-Graph HyperbolicGenerator::generateColdOrig(const vector<double> &angles, const vector<double> &radii, double R) const {
+Graph HyperbolicGenerator::generateColdOrig(const vector<double> &angles, const vector<double> &radii, double R) {
     INFO("Start Original");
 #ifdef HYPERBOLIC_SKIP_DIST_COMP
     INFO("Distance computation disabled");

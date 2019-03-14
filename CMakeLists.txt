@@ -23,16 +23,6 @@ elseif("${CMAKE_CXX_COMPILER_ID}" STREQUAL "Intel")
     set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -use-gen -prof-dir=./profiler")
 endif()
 
-
-add_executable(benchmark_networkit benchmark_networkit.cpp)
-target_link_libraries(benchmark_networkit NetworKitNoEdges)
-
-if (CMAKE_BUILD_TYPE EQUAL "RELEASE")
-    add_executable(benchmark_networkit_skipdist benchmark_networkit.cpp)
-    target_link_libraries(benchmark_networkit_skipdist NetworKitSkipDist)
-endif()
-
-
 set(HYPER_FILES include/Geometry.cpp
     include/PointGenerator.cpp
     include/RandomHelper.cpp
@@ -49,3 +39,8 @@ add_executable(benchmark_hypergen
         ${HYPER_FILES}
         )
 target_link_libraries(benchmark_hypergen Vc)
+
+add_executable(benchmark_nkopt
+        main_benchmark_nkopt.cpp
+        )
+target_link_libraries(benchmark_nkopt NetworKitNoEdges)

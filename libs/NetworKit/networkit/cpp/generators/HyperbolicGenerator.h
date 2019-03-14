@@ -39,10 +39,10 @@ public:
 	 * @return Graph to be generated according to parameters
 	 */
 	Graph generate(const vector<double> &angles, const vector<double> &radii, double R, double T=0);
-	Graph generateCold(const vector<double> &angles, const vector<double> &radii, double R) const;
-	Graph generateColdOrig(const vector<double> &angles, const vector<double> &radii, double R) const;
-	Graph generateColdOpt(const vector<double> &angles, const vector<double> &radii, double R, double seriesRatio = 0.9) const;
-	Graph generateColdOpt1(const vector<double> &angles, const vector<double> &radii, double R, double seriesRatio = 0.9) const;
+	Graph generateCold(const vector<double> &angles, const vector<double> &radii, double R);
+	Graph generateColdOrig(const vector<double> &angles, const vector<double> &radii, double R);
+	Graph generateColdOpt(const vector<double> &angles, const vector<double> &radii, double R, double seriesRatio = 0.9);
+	Graph generateColdOpt1(const vector<double> &angles, const vector<double> &radii, double R, double seriesRatio = 0.9);
 
         std::pair<std::vector<double>, std::vector<double>> generatePoints(count n, double R, double alpha, double T) const;
         
@@ -83,6 +83,10 @@ public:
 	const double& getR() const {
             return R;
         }
+
+	count getNumEdges() const {
+		return m_num_edges;
+	}
 
 public:
 
@@ -231,6 +235,8 @@ public:
 	bool theoreticalSplit;
 	double balance = 0.5;
 	static const bool directSwap = false;
+
+	count m_num_edges;
 
 	/**
 	 * times

@@ -13,7 +13,7 @@
 
 namespace NetworKit {
 
-Graph HyperbolicGenerator::generateColdOpt(const vector<double> &angles, const vector<double> &radii, double R, double seriesRatio) const {
+Graph HyperbolicGenerator::generateColdOpt(const vector<double> &angles, const vector<double> &radii, double R, double seriesRatio) {
     INFO("Start Opt.");
     const count n = angles.size();
     assert(radii.size() == n);
@@ -176,6 +176,8 @@ Graph HyperbolicGenerator::generateColdOpt(const vector<double> &angles, const v
     INFO("Required ", numCompares, " compares (",  (100.0 * numEdges / numCompares), "% successful)");
     INFO("Node Accum ", nodeAccum);
     INFO("Produced ", numEdges, " edges");
+
+    m_num_edges = numEdges;
     
     return {};
 }
