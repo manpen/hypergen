@@ -109,7 +109,7 @@ int main(int argc, char* argv[]) {
     const unsigned n0 = 1e4;
     const unsigned nMax = 1e8;
     const unsigned steps_per_dec = 3;
-    const double timeout = 1 * 1e3; // ms
+    const double timeout = 100 * 1e3; // ms
 
     for(int iter = 0; iter < 5; iter++) {
         for (double ple : {2.2, 3.0}) {
