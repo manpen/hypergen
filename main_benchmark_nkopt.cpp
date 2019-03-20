@@ -78,6 +78,8 @@ double benchmark(std::ostream& os, const std::string& host, unsigned iter, unsig
            << n << ","
            << avgDeg << ","
            << alpha << ","
+           << (2*alpha + 1) << ","
+           << R << ","
            << "0.0,"
            << time_total << ","
            << num_edges << ","
@@ -98,6 +100,8 @@ int main(int argc, char* argv[]) {
        "n,"
        "avgDeg,"
        "alpha,"
+       "PLE,"
+       "R,"
        "T,"
        "TimeTotal,"
        "GenNumEdge,"
@@ -126,9 +130,11 @@ int main(int argc, char* argv[]) {
 
                     std::cout << "iter=" << iter << ", n=" << n << ", avgDeg=" << avgDeg << "\n";
 
-                    double time;
+                    double time = 0.0;
                     if (n < skip_n) {
-                        time = benchmark(std::cerr, host, iter, n, avgDeg, alpha, seed);
+                        try {
+                            time = benchmark(std::cerr, host, iter, n, avgDeg, alpha, seed);
+                        } catch (...) {}
                         if (time > timeout) {
                             skip_n = n;
                             std::cout << " took too long\n";
